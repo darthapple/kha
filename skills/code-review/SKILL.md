@@ -11,6 +11,7 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
 
 1. Read `AGENTS.md` → get list ID, pipeline doc IDs
 2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm current status names
+   (Taxonomy doc not needed by this skill — no task classification performed)
 3. Read the project's stack files (`package.json`, framework config, language version) to determine which best practices and security rules apply
 
 ## Steps
@@ -61,6 +62,7 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
 - Every finding explains exactly what to change and why — no vague guidance
 - Non-blocking observations (style, minor improvements) go in `notes`, never in `criteria` or `security`
 - Security findings always include the risk and the concrete fix
+- A best-practice finding is **blocking** when it introduces maintenance risk (architectural mismatch, dead execution paths, or logic duplication that diverges from the same logic elsewhere). Style, naming, and cosmetic issues are never blocking — record them in `notes`.
 
 ## Output
 

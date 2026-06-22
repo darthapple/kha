@@ -29,6 +29,7 @@ The only actions allowed without confirmation: reading data and adding informati
 3. For each task:
    - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`
    - b. Extract business context from `[kha:scoping]` or `[kha:scoping:context]` comment if present
+     If neither comment is present → stop and confirm: "There's no scoping comment on this task. Should I proceed with technical design only, or should it go back to scoping first?" Wait for answer before continuing.
    - c. **Analyze the codebase** — read relevant files, trace existing patterns around the feature area. The goal is to understand what already exists before proposing anything new.
    - d. **Architecture proposal** — always present your analysis before proceeding:
      - If changes fit existing patterns: "I'd implement this as <X> in <file/module> because <Y>. Does that match your expectations?"

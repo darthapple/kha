@@ -11,6 +11,7 @@ Processes tasks in `TESTING` status. Writes and runs automated tests tied to acc
 
 1. Read `AGENTS.md` → get list ID, pipeline doc IDs
 2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names; check if `MANUAL TESTING` status exists in the list
+   (Taxonomy doc not needed by this skill — no task classification performed)
 3. Read the project's test setup: test runner, test directory structure, existing test files, Playwright config (if any)
 
 ## MANUAL TESTING Status
@@ -49,8 +50,10 @@ Never classify a test criterion as "not automatable" without:
      git add <test files>
      git commit -m "test(<task-id>): add automated tests for <task title>"
      ```
+     **Note:** Tests are committed before running. If the run fails, the commit remains — this is intentional: the test files capture the test intent and are useful for the developer to inspect even when failing.
    - g. **Run all automated tests** and report pass/fail per test mapped to its criterion
    - h. **Decision:**
+     - **Rule: fail overrides manual.** If any automated test fails, the task stays in `TESTING` regardless of manual criteria. Fix failing tests first, then re-run. Manual criteria are only evaluated when all automated tests pass.
      - All criteria covered by passing tests → move to `SHIPPED`:
        ```
        [kha:qa] result: passed

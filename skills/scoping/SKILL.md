@@ -45,7 +45,15 @@ The only actions allowed without confirmation: reading data, moving to the doing
        context: <relevant background the child task needs to be scoped independently>
        ```
      - The epic itself does NOT get acceptance criteria — those belong to the child tasks
-     - Add comment to epic: `[kha:scoping] epic: yes — broken into <N> child tasks: <id>, <id>, ...`
+     - Add comment to epic:
+       ```
+       [kha:scoping]
+       type: epic
+       epic: yes
+       routed: business
+       affected roles: N/A (see child tasks)
+       child tasks: <id>, <id>, ...
+       ```
      - Move epic to `IN DESIGN`, skip to next task
    - e. **Business analysis** (non-epic, business-routed tasks):
      - Write acceptance criteria: each criterion is user-facing, testable, unambiguous, and starts with a verb
