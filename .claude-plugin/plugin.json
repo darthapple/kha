@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "kha",
   "version": "0.1.0",
-  "description": "TODO: describe what this plugin provides",
+  "description": "Kha workflow pipeline skills for managing software development via ClickUp",
   "author": {
     "name": "Fernando Adriano Machado",
     "email": "adriano@nemesysdata.com"
