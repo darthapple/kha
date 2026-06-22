@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "kha",
+  "version": "0.1.0",
+  "description": "TODO: describe what this plugin provides",
+  "author": {
+    "name": "Fernando Adriano Machado",
+    "email": "adriano@nemesysdata.com"
+  },
+  "skills": [
+    "./skills/create-issue",
+    "./skills/backlog-triage"
+  ]
+}
