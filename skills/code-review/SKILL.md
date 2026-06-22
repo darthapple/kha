@@ -18,6 +18,7 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
 
 1. Fetch all tasks in `IN REVIEW` using `mcp__clickup__clickup_filter_tasks`
 2. If none → report "No items in IN REVIEW" and stop
+   Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
 3. For each task:
    - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`
    - b. Extract from comment thread:

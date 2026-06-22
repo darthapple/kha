@@ -26,6 +26,7 @@ The only actions allowed without confirmation: reading data, moving to the doing
 
 1. Fetch all tasks in `BACKLOG` using `mcp__clickup__clickup_filter_tasks`
 2. If none → report "No items in BACKLOG" and stop
+   Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
 3. For each task:
    - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`
    - b. Move task to `SCOPING` status

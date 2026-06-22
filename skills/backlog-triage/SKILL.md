@@ -26,6 +26,7 @@ Processes all tasks in TRIAGE status for the current project. Classifies each by
 
 1. Fetch all tasks in `TRIAGE` from the current list using `mcp__clickup__clickup_filter_tasks`
 2. If no tasks in TRIAGE, report "No items in TRIAGE" and stop
+   Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
 3. For each task:
    - a. Fetch full task details and comment thread using `mcp__clickup__clickup_get_task` and `mcp__clickup__clickup_get_task_comments` — read both before classifying
    - b. Classify type using the rules above (consider title, description, and any comments)

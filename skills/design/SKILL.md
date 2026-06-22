@@ -26,6 +26,7 @@ The only actions allowed without confirmation: reading data and adding informati
 
 1. Fetch all tasks in `IN DESIGN` using `mcp__clickup__clickup_filter_tasks`
 2. If none → report "No items in IN DESIGN" and stop
+   Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
 3. For each task:
    - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`
    - b. Extract business context from `[kha:scoping]` or `[kha:scoping:context]` comment if present
