@@ -32,8 +32,8 @@ The only actions allowed without confirmation: reading data, moving to the doing
    - b. Move task to `SCOPING` status
    - c. **Classify intent** — business or technical?
      - Technical = refactor, devops, infra, or bug fix with no user-facing behavior change
-     - If technical → stop and ask: "This looks technical rather than business-facing — I'd route it directly to IN DESIGN without business scoping. Agreed?"
-     - If agreed → add comment `[kha:scoping] routed: non-business → IN DESIGN`, move to `IN DESIGN`, skip to next task
+     - If classification is ambiguous → state the uncertainty, present your reasoning, and ask the user before proceeding
+     - If clearly technical → add comment `[kha:scoping] routed: non-business → IN DESIGN`, move to `IN DESIGN`, skip to next task
    - d. **Epic detection** — if `type:epic` label is set:
      - Propose a breakdown: present a numbered list of candidate child tasks (title + one-line description each)
      - Ask: "I'd break this epic into these tasks — does this look right before I create them?" Wait for answer.
