@@ -9,8 +9,9 @@ Processes all tasks in TRIAGE status for the current project. Classifies each by
 
 ## Context
 
-Read `AGENTS.md` in the current project to find the list ID.
-Read the Taxonomy document (`_Config` space, doc ID: `2kza2py5-537`) for full type definitions.
+1. Read `AGENTS.md` in the current project to find the list ID
+2. Read the Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) for current status names
+3. Read the Taxonomy doc (`_Config` space, doc ID: `2kza2py5-537`) for full type definitions
 
 ## Classification Rules
 
@@ -26,17 +27,17 @@ Read the Taxonomy document (`_Config` space, doc ID: `2kza2py5-537`) for full ty
 1. Fetch all tasks in `TRIAGE` from the current list using `mcp__clickup__clickup_filter_tasks`
 2. If no tasks in TRIAGE, report "No items in TRIAGE" and stop
 3. For each task:
-   - a. Read title and description
-   - b. Classify type using rules above
+   - a. Fetch full task details and comment thread using `mcp__clickup__clickup_get_task` and `mcp__clickup__clickup_get_task_comments` — read both before classifying
+   - b. Classify type using the rules above (consider title, description, and any comments)
    - c. If classification is ambiguous → ask user one focused question before continuing
-   - d. If `bug` and no reproduction steps in description → ask user before continuing
+   - d. If `bug` and no reproduction steps in description or comments → ask user before continuing
    - e. Add comment: `[kha:triage] type: <type> — <one-line reasoning>`
    - f. Move task to `BACKLOG` status using `mcp__clickup__clickup_update_task`
 4. Report summary
 
 ## Clarifying Questions
 
-- Ask only when classification is genuinely unclear from title + description
+- Ask only when classification is genuinely unclear from title, description, and comments
 - One question per task, not a list of questions
 - Wait for answer before moving to the next task
 
