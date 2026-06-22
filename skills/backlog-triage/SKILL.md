@@ -1,5 +1,5 @@
 ---
-name: backlog-triage
+name: kha:backlog-triage
 description: Use when triaging tasks in TRIAGE status. Classifies each by type, asks clarifying questions only when needed, and moves items to BACKLOG.
 ---
 

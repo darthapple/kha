@@ -1,5 +1,5 @@
 ---
-name: create-issue
+name: kha:create-issue
 description: Use when creating a new task in the current ClickUp project. Collects title and description from the user, creates the task in TRIAGE status.
 ---
 
