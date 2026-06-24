@@ -70,19 +70,25 @@ Never classify a test criterion as "not automatable" without:
 
 11. **Decision:**
     - **Rule: fail overrides manual.** If any automated test fails, the task stays in `TESTING` regardless of manual criteria. Fix failing tests first, then re-run. Manual criteria are only evaluated when all automated tests pass.
-    - All criteria covered by passing tests → merge task branch into `develop`, then move to `SHIPPED`. Stop time tracking (see **Time Tracking**):
+    - All criteria covered by passing tests → merge task branch into `develop`, open a PR to merge `develop` into `main`, then move to `SHIPPED`. Stop time tracking (see **Time Tracking**):
       ```bash
       git checkout develop && git pull origin develop
       git merge --no-ff task/<task-id>-<kebab-title> -m "Merge task/<task-id>-<kebab-title> into develop"
       git push origin develop
       git branch -d task/<task-id>-<kebab-title>
       ```
+      Then open a PR from `develop` into `main`:
+      ```bash
+      gh pr create --base main --head develop --title "Release: <task title>" --body "Merges develop into main shipping task <task-id>: <task title>."
+      ```
+      If a `develop → main` PR is already open, skip creation and add the PR URL to the comment instead.
       Then add comment and move status:
       ```
       [kha:qa] result: passed
       automated: <N> tests, all passing
       coverage:
       - <criterion> → <test name>
+      pr: <develop→main PR URL>
       ```
     - Some criteria need manual testing (confirmed with human) → ensure `MANUAL TESTING` status exists, move task there. Stop time tracking (see **Time Tracking**):
       ```
