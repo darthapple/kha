@@ -39,6 +39,8 @@ Never classify a test criterion as "not automatable" without:
 
 4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
 
+4b. **Type gate:** If task type is `feature` → apply **Feature Advancement Rule** (see below). Stop time tracking. STOP.
+
 5. Extract from comment thread:
    - **For `type:task`:** implementation-scope acceptance criteria from `[kha:scoping]` or `[kha:design:context]`
    - **For `type:feature`:** user-facing acceptance criteria from `[kha:scoping]`
@@ -107,6 +109,23 @@ Never classify a test criterion as "not automatable" without:
 
 12. **STOP.** Do not process any remaining tasks in the queue.
     One invocation = one task. The user must re-invoke `kha:qa` for the next task.
+
+## Feature Advancement Rule
+
+When a `type:feature` is encountered, do not run tests against it as a regular task. Instead:
+
+1. Check for a `[kha:design]` comment. If none → say: "This feature hasn't been designed yet — run `kha:design` on it." STOP.
+2. Extract child task IDs from the `child tasks:` line in `[kha:design]`.
+3. Fetch the current status of each child task via `mcp__clickup__clickup_get_task`.
+4. Find the **minimum child status** using pipeline order:
+   `TRIAGE < BACKLOG < SCOPING < IN DESIGN < READY FOR DEVELOPMENT < IN DEVELOPMENT < IN REVIEW < TESTING < SHIPPED`
+5. If minimum child status > parent's current status:
+   - Move parent to minimum child status via `mcp__clickup__clickup_update_task`.
+   - Add ClickUp comment: `[kha:auto] parent advanced to [status] — reflects minimum status among [N] children ([list of child IDs and their statuses]).`
+   - Report: "Feature **[title]** (`[id]`) advanced: [old status] → [new status]."
+6. If minimum child status ≤ parent's current status:
+   - Report which children are at or behind the parent's current status.
+   - Say: "Feature cannot advance — child tasks have not yet reached this phase." STOP without changing status.
 
 ## Assignment Routine
 

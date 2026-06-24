@@ -21,6 +21,7 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
    Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
 3. For each task:
    - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`. Assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
+   - a2. **Type gate:** If task type is `feature` → apply **Feature Advancement Rule** (see below). Stop time tracking. Skip to next task.
    - b. Extract from comment thread:
      - Acceptance criteria from `[kha:scoping]` comment
      - Architecture decisions from `[kha:design]` comment
@@ -56,6 +57,23 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
        practices:
        - <file>:<line> — <issue> — <explanation and fix> (omit section if none)
        ```
+
+## Feature Advancement Rule
+
+When a `type:feature` is encountered, do not review it as a regular task. Instead:
+
+1. Check for a `[kha:design]` comment. If none → say: "This feature hasn't been designed yet — run `kha:design` on it." STOP.
+2. Extract child task IDs from the `child tasks:` line in `[kha:design]`.
+3. Fetch the current status of each child task via `mcp__clickup__clickup_get_task`.
+4. Find the **minimum child status** using pipeline order:
+   `TRIAGE < BACKLOG < SCOPING < IN DESIGN < READY FOR DEVELOPMENT < IN DEVELOPMENT < IN REVIEW < TESTING < SHIPPED`
+5. If minimum child status > parent's current status:
+   - Move parent to minimum child status via `mcp__clickup__clickup_update_task`.
+   - Add ClickUp comment: `[kha:auto] parent advanced to [status] — reflects minimum status among [N] children ([list of child IDs and their statuses]).`
+   - Report: "Feature **[title]** (`[id]`) advanced: [old status] → [new status]."
+6. If minimum child status ≤ parent's current status:
+   - Report which children are at or behind the parent's current status.
+   - Say: "Feature cannot advance — child tasks have not yet reached this phase." STOP without changing status.
 
 ## Assignment Routine
 
