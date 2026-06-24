@@ -16,9 +16,12 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
 
 ## Steps
 
-1. Fetch all tasks in `IN REVIEW` using `mcp__clickup__clickup_filter_tasks`
-2. If none → report "No items in IN REVIEW" and stop
-   Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
+1. Fetch tasks in `IN REVIEW` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+   ```bash
+   source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=in%20review&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+   ```
+   Sort the returned `tasks` array by `orderindex` ascending — this reflects column order (top to bottom). Never reorder by age, priority, or any other field.
+2. If response contains no tasks → report "No items in IN REVIEW" and stop.
 3. For each task:
    - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`. Assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
    - a2. **Type gate:** If task type is `feature` → apply **Feature Advancement Rule** (see below). Stop time tracking. Skip to next task.

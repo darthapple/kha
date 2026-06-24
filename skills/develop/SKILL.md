@@ -26,9 +26,12 @@ The only actions allowed without confirmation: reading data, creating the branch
 
 ## Steps
 
-1. Fetch all tasks in `READY FOR DEVELOPMENT` using `mcp__clickup__clickup_filter_tasks`
-2. If none → report "No items in READY FOR DEVELOPMENT" and stop.
-   Sort the returned tasks by their `orderindex` field ascending before selecting — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
+1. Fetch tasks in `READY FOR DEVELOPMENT` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+   ```bash
+   source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=ready%20for%20development&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+   ```
+   Sort the returned `tasks` array by `orderindex` ascending — this reflects column order (top to bottom). Never reorder by age, priority, or any other field. Select `tasks[0]`.
+2. If response contains no tasks → report "No items in READY FOR DEVELOPMENT" and stop.
 3. Present the top task: title, ID, and one-line summary from its `[kha:design:context]` comment (if present). Ask: "Work on this task?" Wait for confirmation.
    On confirmation: assign current user (see **Assignment Routine**).
 

@@ -28,9 +28,12 @@ The only actions allowed without confirmation: reading data and adding informati
 
 ## Steps
 
-1. Fetch all tasks in `IN DESIGN` using `mcp__clickup__clickup_filter_tasks`
-2. If none → report "No items in IN DESIGN" and stop.
-   Sort the returned tasks by their `orderindex` field ascending. Select `tasks[0]` only.
+1. Fetch tasks in `IN DESIGN` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+   ```bash
+   source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=in%20design&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+   ```
+   Sort the returned `tasks` array by `orderindex` ascending. Select `tasks[0]`.
+2. If response contains no tasks → report "No items in IN DESIGN" and stop.
 
 3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.
    On confirmation: assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).

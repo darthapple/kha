@@ -38,9 +38,12 @@ The only actions allowed without confirmation: reading data, moving to the doing
 ## Steps
 
 1. **Find the task to process:**
-   - First: fetch tasks in `SCOPING` status (`mcp__clickup__clickup_filter_tasks`). These are already in progress — resume them.
-     - If found: sort by `orderindex` ascending, select `tasks[0]`. Skip steps 2–3 (already in SCOPING). Assign current user (see **Assignment Routine**) and start time tracking (see **Time Tracking**). Go to step 4.
-   - If none in SCOPING: fetch tasks in `BACKLOG` status.
+   - First: fetch tasks in `SCOPING` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+     ```bash
+     source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=scoping&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+     ```
+     Sort `tasks` by `orderindex` ascending. If any found: select `tasks[0]`, skip steps 2–3. Assign current user and start time tracking. Go to step 4.
+   - If none in SCOPING: fetch tasks in `BACKLOG` the same way (replace `statuses[]=scoping` with `statuses[]=backlog`).
      - If none there either → report "Nothing to scope — no tasks in BACKLOG or SCOPING." Stop.
      - Sort by `orderindex` ascending, select `tasks[0]`.
 
