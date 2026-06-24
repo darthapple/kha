@@ -43,7 +43,11 @@ The only actions allowed without confirmation: reading data, creating the branch
    - Architecture context from `[kha:design:context]` comment
    - If neither exists → ask: "I couldn't find scoping or design comments on this task. Should I proceed without them, or should it go back to design first?" Wait for answer before proceeding.
 
-7. Create branch: `git checkout -b task/<task-id>-<kebab-title>` from current main
+7. Create branch from `develop` — always branch from `develop`, never from `main`:
+   ```bash
+   git checkout develop && git pull origin develop
+   git checkout -b task/<task-id>-<kebab-title>
+   ```
 
 8. Move task to `IN DEVELOPMENT`
 

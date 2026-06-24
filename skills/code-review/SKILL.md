@@ -25,7 +25,7 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
      - Acceptance criteria from `[kha:scoping]` comment
      - Architecture decisions from `[kha:design]` comment
      - If neither comment exists → ask: "I couldn't find scoping or design comments on this task. Should I proceed without acceptance criteria, or should the task be re-scoped first?"
-   - c. Read the current git diff (run `git diff HEAD` or `git diff main...HEAD` as appropriate) focusing on files relevant to the task
+   - c. Read the current git diff (run `git diff develop...HEAD`) focusing on files relevant to the task
    - d. **Review Layer 1 — Acceptance criteria:** For each criterion in `[kha:scoping]`, evaluate whether the implementation satisfies it. Cite file and line for each finding. Mark ✅ or ❌.
    - e. **Review Layer 2 — Best practices:** Check for: idiomatic patterns for the detected stack, code clarity and naming, dead code, unnecessary duplication, structural issues. Cite file and line.
    - f. **Review Layer 3 — Security:** Check for OWASP Top 10 risks relevant to the stack:

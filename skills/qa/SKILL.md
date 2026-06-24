@@ -69,7 +69,13 @@ Never classify a test criterion as "not automatable" without:
 
 11. **Decision:**
     - **Rule: fail overrides manual.** If any automated test fails, the task stays in `TESTING` regardless of manual criteria. Fix failing tests first, then re-run. Manual criteria are only evaluated when all automated tests pass.
-    - All criteria covered by passing tests → move to `SHIPPED`:
+    - All criteria covered by passing tests → merge task branch into `develop`, then move to `SHIPPED`:
+      ```bash
+      git checkout develop && git pull origin develop
+      git merge --no-ff task/<task-id>-<kebab-title> -m "Merge task/<task-id>-<kebab-title> into develop"
+      git push origin develop
+      ```
+      Then add comment and move status:
       ```
       [kha:qa] result: passed
       automated: <N> tests, all passing
