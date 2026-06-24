@@ -1,11 +1,15 @@
 ---
 name: kha:backlog-triage
-description: Use when triaging tasks in TRIAGE status. Classifies each by type, asks clarifying questions only when needed, and moves items to BACKLOG.
+description: Use when triaging tasks in TRIAGE status. Classifies each by type using the native Task Type field, asks clarifying questions only when needed, and moves items to BACKLOG. Processes ONE task per invocation.
 ---
 
 # kha: Backlog Triage
 
-Processes all tasks in TRIAGE status for the current project. Classifies each by type and moves to BACKLOG.
+> **ONE TASK PER INVOCATION.** Pick the first task only (top of column by orderindex).
+> After completing it, STOP. Never continue to the next task.
+> Batch processing is forbidden — the user must re-invoke the skill for each task.
+
+Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickUp Task Type field) and moves to `BACKLOG`.
 
 ## Context
 
@@ -15,38 +19,50 @@ Processes all tasks in TRIAGE status for the current project. Classifies each by
 
 ## Classification Rules
 
-| Type | When to use |
-|------|-------------|
-| `bug` | Something broken that should work. Requires reproduction steps. |
-| `feature` | New functionality that doesn't exist yet. |
-| `epic` | Large initiative grouping multiple tasks or features. |
-| `task` | Everything else — docs, refactors, research. |
+| Native Task Type | When to use |
+|-----------------|-------------|
+| `Bug` | Something broken that should work. Requires reproduction steps. |
+| `Feature` | New user-facing functionality that doesn't exist yet. Gets broken into Tasks by kha:design. |
+| `Epic` | Large initiative grouping multiple Features. Gets broken into Features by kha:scoping. |
+| `Task` | Everything else — docs, refactors, research, standalone implementation work. |
+
+**Important:** Classification is set using the native ClickUp Task Type field (`task_type` in `mcp__clickup__clickup_update_task`), not tags or labels.
 
 ## Steps
 
 1. Fetch all tasks in `TRIAGE` from the current list using `mcp__clickup__clickup_filter_tasks`
-2. If no tasks in TRIAGE, report "No items in TRIAGE" and stop
-   Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
-3. For each task:
-   - a. Fetch full task details and comment thread using `mcp__clickup__clickup_get_task` and `mcp__clickup__clickup_get_task_comments` — read both before classifying
-   - b. Classify type using the rules above (consider title, description, and any comments)
-   - c. If classification is ambiguous → ask user one focused question before continuing
-   - d. If `bug` and no reproduction steps in description or comments → ask user before continuing
-   - e. Add comment: `[kha:triage] type: <type> — <one-line reasoning>`
-   - f. Move task to `BACKLOG` status using `mcp__clickup__clickup_update_task`
-4. Report summary
+2. If none → report "No items in TRIAGE" and stop.
+   Sort the returned tasks by their `orderindex` field ascending. Select `tasks[0]` only.
+
+3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Triage this task?" Wait for confirmation.
+
+4. Fetch full task details and comment thread using `mcp__clickup__clickup_get_task` (include `description`) and `mcp__clickup__clickup_get_task_comments` — read both before classifying.
+
+5. Classify type using the rules above (consider title, description, and any comments).
+   - If classification is ambiguous → ask user one focused question before continuing. Wait for answer.
+   - If `Bug` and no reproduction steps in description or comments → ask user for them before continuing. Wait for answer.
+
+6. Set the native task type using `mcp__clickup__clickup_update_task` with `task_type` = `Bug`, `Feature`, `Epic`, or `Task`.
+
+7. Add comment: `[kha:triage] type: <type> — <one-line reasoning>`
+
+8. Move task to `BACKLOG` status using `mcp__clickup__clickup_update_task`.
+
+9. **STOP.** Do not process any remaining tasks in the queue.
+   One invocation = one task. The user must re-invoke `kha:backlog-triage` for the next task.
 
 ## Clarifying Questions
 
 - Ask only when classification is genuinely unclear from title, description, and comments
 - One question per task, not a list of questions
-- Wait for answer before moving to the next task
+- Wait for answer before proceeding
 
 ## Output
 
-Summary table after all items are processed:
+Report for the single processed task:
 
-| Task | Type | Status |
-|------|------|--------|
-| Fix login redirect | bug | → BACKLOG |
-| Add CSV export | feature | → BACKLOG |
+| Field | Value |
+|-------|-------|
+| Task | [title] ([id]) |
+| Type | [Bug / Feature / Epic / Task] |
+| Status | → BACKLOG |

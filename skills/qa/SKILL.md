@@ -1,11 +1,15 @@
 ---
 name: kha:qa
-description: Use when testing tasks in TESTING status. Writes and runs automated tests (unit, integration, Playwright e2e), handles manual fallback, and moves to SHIPPED on full pass.
+description: Use when testing tasks in TESTING status. Writes and runs automated tests (unit, integration, Playwright e2e), handles manual fallback, and moves to SHIPPED on full pass. Processes ONE task per invocation.
 ---
 
 # kha: QA
 
-Processes tasks in `TESTING` status. Writes and runs automated tests tied to acceptance criteria. For criteria that genuinely cannot be automated (confirmed with human), creates a manual checklist and moves the task to `MANUAL TESTING`. Moves to `SHIPPED` on full automated pass.
+> **ONE TASK PER INVOCATION.** Pick the first task only (top of column by orderindex).
+> After completing it, STOP. Never loop to the next task.
+> Batch processing is forbidden — the user must re-invoke the skill for each task.
+
+Processes one task in `TESTING` status. Writes and runs automated tests tied to acceptance criteria. For criteria that genuinely cannot be automated (confirmed with human), creates a manual checklist and moves to `MANUAL TESTING`. Moves to `SHIPPED` on full automated pass.
 
 ## Context
 
@@ -27,55 +31,68 @@ Never classify a test criterion as "not automatable" without:
 ## Steps
 
 1. Fetch all tasks in `TESTING` using `mcp__clickup__clickup_filter_tasks`
-2. If none → report "No items in TESTING" and stop
-   Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
-3. For each task:
-   - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`
-   - b. Extract from comment thread:
-     - Acceptance criteria from `[kha:scoping]`
-     - Architecture context from `[kha:design]`
-     - Review summary from `[kha:code-review]`
-   - c. **Assess automability per criterion:**
-     - Unit/integration testable → write test in the appropriate test file
-     - UI/user-flow testable → write Playwright e2e test (`page.getByRole`, `page.getByLabel` — never CSS class selectors)
-     - Unclear → stop and confirm: "I couldn't find a reliable way to automate '<criterion>' — here's why: <reason>. Do you agree this needs manual testing?" Wait for explicit agreement before classifying as manual.
-   - d. **Write automated tests** (before running):
-     - One test per criterion — test names describe the behavior: `test('resets password when valid token provided')`
-     - Unit tests: test one function/method, mock all external dependencies (DB, network, time)
-     - Integration tests: test module boundaries, mock only external services
-     - Playwright e2e: test full user flows against the running app
-     - Each test has exactly one assertion focus — split tests that check multiple behaviors
-   - e. **Ask before committing:** "I've written <N> tests covering <criteria list>. Here's a summary: <test names>. Should I commit them?" Wait for confirmation.
-   - f. On confirmation: commit test files
-     ```bash
-     git add <test files>
-     git commit -m "test(<task-id>): add automated tests for <task title>"
-     ```
-     **Note:** Tests are committed before running. If the run fails, the commit remains — this is intentional: the test files capture the test intent and are useful for the developer to inspect even when failing.
-   - g. **Run all automated tests** and report pass/fail per test mapped to its criterion
-   - h. **Decision:**
-     - **Rule: fail overrides manual.** If any automated test fails, the task stays in `TESTING` regardless of manual criteria. Fix failing tests first, then re-run. Manual criteria are only evaluated when all automated tests pass.
-     - All criteria covered by passing tests → move to `SHIPPED`:
-       ```
-       [kha:qa] result: passed
-       automated: <N> tests, all passing
-       coverage:
-       - <criterion> → <test name>
-       ```
-     - Some criteria need manual testing (confirmed with human) → ensure `MANUAL TESTING` status exists, move task there:
-       ```
-       [kha:qa] result: manual required
-       automated: <N> tests, all passing
-       manual checklist:
-       - [ ] <specific step: what to do and what to verify>
-       - [ ] <specific step: what to do and what to verify>
-       ```
-     - Automated tests fail → stay in `TESTING`:
-       ```
-       [kha:qa] result: failed
-       failing tests:
-       - <test name> — covers: <criterion> — error: <error message>
-       ```
+2. If none → report "No items in TESTING" and stop.
+   Sort the returned tasks by their `orderindex` field ascending. Select `tasks[0]` only.
+
+3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.
+
+4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
+
+5. Extract from comment thread:
+   - **For `type:task`:** implementation-scope acceptance criteria from `[kha:scoping]` or `[kha:design:context]`
+   - **For `type:feature`:** user-facing acceptance criteria from `[kha:scoping]`
+   - Architecture context from `[kha:design]`
+   - Review summary from `[kha:code-review]`
+
+6. **Assess automability per criterion:**
+   - `type:task` criteria (implementation-scope) → unit tests or integration tests
+   - `type:feature` criteria (user-facing flows) → Playwright e2e tests
+   - Unclear → stop and confirm: "I couldn't find a reliable way to automate '<criterion>' — here's why: <reason>. Do you agree this needs manual testing?" Wait for explicit agreement before classifying as manual.
+
+7. **Write automated tests** (before running):
+   - One test per criterion — test names describe the behavior: `test('resets password when valid token provided')`
+   - Unit tests: test one function/method, mock all external dependencies (DB, network, time)
+   - Integration tests: test module boundaries, mock only external services
+   - Playwright e2e: test full user flows against the running app; use `page.getByRole`, `page.getByLabel`, `page.getByText` — never CSS class or ID selectors
+   - Each test has exactly one assertion focus — split tests that check multiple behaviors
+
+8. **Ask before committing:** "I've written <N> tests covering <criteria list>. Here's a summary: <test names>. Should I commit them?" Wait for confirmation.
+
+9. On confirmation: commit test files
+   ```bash
+   git add <test files>
+   git commit -m "test(<task-id>): add automated tests for <task title>"
+   ```
+   **Note:** Tests are committed before running. If the run fails, the commit remains — this is intentional: the test files capture the test intent and are useful for the developer to inspect even when failing.
+
+10. **Run all automated tests** and report pass/fail per test mapped to its criterion
+
+11. **Decision:**
+    - **Rule: fail overrides manual.** If any automated test fails, the task stays in `TESTING` regardless of manual criteria. Fix failing tests first, then re-run. Manual criteria are only evaluated when all automated tests pass.
+    - All criteria covered by passing tests → move to `SHIPPED`:
+      ```
+      [kha:qa] result: passed
+      automated: <N> tests, all passing
+      coverage:
+      - <criterion> → <test name>
+      ```
+    - Some criteria need manual testing (confirmed with human) → ensure `MANUAL TESTING` status exists, move task there:
+      ```
+      [kha:qa] result: manual required
+      automated: <N> tests, all passing
+      manual checklist:
+      - [ ] <specific step: what to do and what to verify>
+      - [ ] <specific step: what to do and what to verify>
+      ```
+    - Automated tests fail → stay in `TESTING`:
+      ```
+      [kha:qa] result: failed
+      failing tests:
+      - <test name> — covers: <criterion> — error: <error message>
+      ```
+
+12. **STOP.** Do not process any remaining tasks in the queue.
+    One invocation = one task. The user must re-invoke `kha:qa` for the next task.
 
 ## Test Writing Guidelines
 
@@ -87,10 +104,11 @@ Never classify a test criterion as "not automatable" without:
 
 ## Output
 
-Summary table after all tasks are processed:
+Report for the single processed task:
 
-| Task | Automated | Manual | Result |
-|------|-----------|--------|--------|
-| Password reset | 4 tests pass | — | → SHIPPED |
-| Admin data export | 2 tests pass | 1 (visual layout) | → MANUAL TESTING |
-| Auth middleware | 3 tests fail | — | stays TESTING |
+| Field | Value |
+|-------|-------|
+| Task | [title] ([id]) |
+| Automated Tests | [N] tests |
+| Manual | [yes / no] |
+| Result | → [SHIPPED / MANUAL TESTING / stays TESTING] |
