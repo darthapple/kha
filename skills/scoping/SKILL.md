@@ -39,14 +39,14 @@ The only actions allowed without confirmation: reading data, moving to the doing
 
 1. **Find the task to process:**
    - First: fetch tasks in `SCOPING` status (`mcp__clickup__clickup_filter_tasks`). These are already in progress — resume them.
-     - If found: sort by `orderindex` ascending, select `tasks[0]`. Skip step 3 (already in SCOPING). Go to step 4.
+     - If found: sort by `orderindex` ascending, select `tasks[0]`. Skip steps 2–3 (already in SCOPING). Assign current user (see **Assignment Routine**) and start time tracking (see **Time Tracking**). Go to step 4.
    - If none in SCOPING: fetch tasks in `BACKLOG` status.
      - If none there either → report "Nothing to scope — no tasks in BACKLOG or SCOPING." Stop.
      - Sort by `orderindex` ascending, select `tasks[0]`.
 
 2. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.
 
-3. Move task to `SCOPING` status (doing state).
+3. Move task to `SCOPING` status (doing state). Assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
 
 4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
 
@@ -72,13 +72,13 @@ The only actions allowed without confirmation: reading data, moving to the doing
      routed: epic
      child features: <id>, <id>, ...
      ```
-   - Move epic to `IN DESIGN`
+   - Move epic to `IN DESIGN`. Stop time tracking (see **Time Tracking**).
 
    ### type:feature
    - **Classify intent** — business or technical?
      - Technical = refactor, devops, infra with no user-facing behavior change
      - If ambiguous → state uncertainty, present reasoning, ask before proceeding
-     - If clearly technical → add comment `[kha:scoping] routed: non-business → IN DESIGN`, move to `IN DESIGN`, stop
+     - If clearly technical → add comment `[kha:scoping] routed: non-business → IN DESIGN`, move to `IN DESIGN`, stop time tracking (see **Time Tracking**), stop
    - **Business analysis** (business-routed features):
      - Write **user-facing** acceptance criteria: each is user-visible, testable, unambiguous, starts with a verb
        (e.g., "User receives a reset email when requesting password reset")
@@ -96,11 +96,11 @@ The only actions allowed without confirmation: reading data, moving to the doing
      - <user-facing criterion — starts with verb>
      doc: <url if created, else omit this line>
      ```
-   - Move task to `IN DESIGN`
+   - Move task to `IN DESIGN`. Stop time tracking (see **Time Tracking**).
 
    ### type:task or type:bug
    - **Classify intent** — business or technical? (same rules as feature above)
-   - If clearly technical → add comment `[kha:scoping] routed: non-business → IN DESIGN`, move to `IN DESIGN`, stop
+   - If clearly technical → add comment `[kha:scoping] routed: non-business → IN DESIGN`, move to `IN DESIGN`, stop time tracking (see **Time Tracking**), stop
    - **Business analysis** (business-routed tasks):
      - Write **implementation-scope** acceptance criteria: technical, testable, specific
        (e.g., "POST /api/reset-password returns 200 with valid token")
@@ -114,10 +114,24 @@ The only actions allowed without confirmation: reading data, moving to the doing
      - <implementation criterion — starts with verb>
      - <implementation criterion — starts with verb>
      ```
-   - Move task to `IN DESIGN`
+   - Move task to `IN DESIGN`. Stop time tracking (see **Time Tracking**).
 
 6. **STOP.** Task is complete. Do not process any remaining tasks in the queue.
    One invocation = one task. The user must re-invoke `kha:scoping` for the next task.
+
+## Assignment Routine
+
+When starting work on a task, ensure the current user is assigned:
+1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
+2. Check the task's existing `assignees` from the fetched task details.
+3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
+4. If already assigned: skip.
+
+## Time Tracking
+
+**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
+
+**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
 
 ## Output
 

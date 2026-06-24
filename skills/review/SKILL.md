@@ -1,9 +1,9 @@
 ---
-name: kha:code-review
+name: kha:review
 description: Use when reviewing tasks in IN REVIEW status. Reviews implementation against acceptance criteria, stack best practices, and security. Moves to TESTING on pass, stays IN REVIEW with findings on fail.
 ---
 
-# kha: Code Review
+# kha: Review
 
 Reviews tasks in `IN REVIEW` status. Evaluates the implementation against acceptance criteria from scoping, architecture decisions from design, stack best practices, and security. Moves to `TESTING` on pass or stays in `IN REVIEW` with specific, actionable findings on fail.
 
@@ -20,7 +20,7 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
 2. If none → report "No items in IN REVIEW" and stop
    Sort the returned tasks by their `orderindex` field ascending before processing — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
 3. For each task:
-   - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`
+   - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`. Assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
    - b. Extract from comment thread:
      - Acceptance criteria from `[kha:scoping]` comment
      - Architecture decisions from `[kha:design]` comment
@@ -39,15 +39,15 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
      - Stack-specific vulnerabilities (e.g. prototype pollution in JS, SSRF in server code)
      Cite file and line for every issue.
    - g. **Decision:**
-     - All criteria ✅ and no blocking best practice or security issue → move to `TESTING`:
+     - All criteria ✅ and no blocking best practice or security issue → move to `TESTING`. Stop time tracking (see **Time Tracking**). Add comment:
        ```
-       [kha:code-review] result: approved
+       [kha:review] result: approved
        criteria: all met
        notes: <non-blocking observations, or omit this line>
        ```
-     - Any criterion ❌ or any blocking issue → stay in `IN REVIEW`:
+     - Any criterion ❌ or any blocking issue → stay in `IN REVIEW`. Stop time tracking (see **Time Tracking**). Add comment:
        ```
-       [kha:code-review] result: changes requested
+       [kha:review] result: changes requested
        criteria:
        - ✅ <criterion text>
        - ❌ <criterion text> — <file>:<line> — <what is missing or wrong>
@@ -56,6 +56,20 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
        practices:
        - <file>:<line> — <issue> — <explanation and fix> (omit section if none)
        ```
+
+## Assignment Routine
+
+When starting work on a task, ensure the current user is assigned:
+1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
+2. Check the task's existing `assignees` from the fetched task details.
+3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
+4. If already assigned: skip.
+
+## Time Tracking
+
+**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
+
+**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
 
 ## Finding Quality Rules
 

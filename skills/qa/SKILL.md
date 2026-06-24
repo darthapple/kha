@@ -35,6 +35,7 @@ Never classify a test criterion as "not automatable" without:
    Sort the returned tasks by their `orderindex` field ascending. Select `tasks[0]` only.
 
 3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.
+   On confirmation: assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
 
 4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
 
@@ -42,7 +43,7 @@ Never classify a test criterion as "not automatable" without:
    - **For `type:task`:** implementation-scope acceptance criteria from `[kha:scoping]` or `[kha:design:context]`
    - **For `type:feature`:** user-facing acceptance criteria from `[kha:scoping]`
    - Architecture context from `[kha:design]`
-   - Review summary from `[kha:code-review]`
+   - Review summary from `[kha:review]`
 
 6. **Assess automability per criterion:**
    - `type:task` criteria (implementation-scope) → unit tests or integration tests
@@ -69,11 +70,12 @@ Never classify a test criterion as "not automatable" without:
 
 11. **Decision:**
     - **Rule: fail overrides manual.** If any automated test fails, the task stays in `TESTING` regardless of manual criteria. Fix failing tests first, then re-run. Manual criteria are only evaluated when all automated tests pass.
-    - All criteria covered by passing tests → merge task branch into `develop`, then move to `SHIPPED`:
+    - All criteria covered by passing tests → merge task branch into `develop`, then move to `SHIPPED`. Stop time tracking (see **Time Tracking**):
       ```bash
       git checkout develop && git pull origin develop
       git merge --no-ff task/<task-id>-<kebab-title> -m "Merge task/<task-id>-<kebab-title> into develop"
       git push origin develop
+      git branch -d task/<task-id>-<kebab-title>
       ```
       Then add comment and move status:
       ```
@@ -82,7 +84,7 @@ Never classify a test criterion as "not automatable" without:
       coverage:
       - <criterion> → <test name>
       ```
-    - Some criteria need manual testing (confirmed with human) → ensure `MANUAL TESTING` status exists, move task there:
+    - Some criteria need manual testing (confirmed with human) → ensure `MANUAL TESTING` status exists, move task there. Stop time tracking (see **Time Tracking**):
       ```
       [kha:qa] result: manual required
       automated: <N> tests, all passing
@@ -90,7 +92,7 @@ Never classify a test criterion as "not automatable" without:
       - [ ] <specific step: what to do and what to verify>
       - [ ] <specific step: what to do and what to verify>
       ```
-    - Automated tests fail → stay in `TESTING`:
+    - Automated tests fail → stay in `TESTING`. Stop time tracking (see **Time Tracking**):
       ```
       [kha:qa] result: failed
       failing tests:
@@ -99,6 +101,20 @@ Never classify a test criterion as "not automatable" without:
 
 12. **STOP.** Do not process any remaining tasks in the queue.
     One invocation = one task. The user must re-invoke `kha:qa` for the next task.
+
+## Assignment Routine
+
+When starting work on a task, ensure the current user is assigned:
+1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
+2. Check the task's existing `assignees` from the fetched task details.
+3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
+4. If already assigned: skip.
+
+## Time Tracking
+
+**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
+
+**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
 
 ## Test Writing Guidelines
 

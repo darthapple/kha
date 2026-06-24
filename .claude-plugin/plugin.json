@@ -8,7 +8,7 @@
     "email": "adriano@nemesysdata.com"
   },
   "skills": [
-    "./skills/create-issue",
-    "./skills/backlog-triage"
+    "./skills/issue",
+    "./skills/triage"
   ]
 }

@@ -30,6 +30,7 @@ The only actions allowed without confirmation: reading data, creating the branch
 2. If none → report "No items in READY FOR DEVELOPMENT" and stop.
    Sort the returned tasks by their `orderindex` field ascending before selecting — this reflects the position within the status column (top to bottom). Never reorder by age, priority, or any other field.
 3. Present the top task: title, ID, and one-line summary from its `[kha:design:context]` comment (if present). Ask: "Work on this task?" Wait for confirmation.
+   On confirmation: assign current user (see **Assignment Routine**).
 
 4. **Type gate** — check task type:
    - If type is `feature` → say: "This is a `type:feature` — it needs to be broken into tasks first. Run `kha:design` on it." STOP.
@@ -49,7 +50,7 @@ The only actions allowed without confirmation: reading data, creating the branch
    git checkout -b task/<task-id>-<kebab-title>
    ```
 
-8. Move task to `IN DEVELOPMENT`
+8. Move task to `IN DEVELOPMENT`. Start time tracking (see **Time Tracking**).
 
 9. **TDD loop** — for each acceptance criterion from `[kha:scoping]` or `[kha:design:context]`, in order:
    - a. **Red** — write a failing test that exercises exactly that criterion. Run it to confirm it fails for the right reason (not a setup error).
@@ -73,7 +74,21 @@ The only actions allowed without confirmation: reading data, creating the branch
     notes: <architectural decisions made during implementation, or omit this line>
     ```
 
-12. Move task to `IN REVIEW`
+12. Move task to `IN REVIEW`. Stop time tracking (see **Time Tracking**).
+
+## Assignment Routine
+
+When starting work on a task, ensure the current user is assigned:
+1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
+2. Check the task's existing `assignees` from the fetched task details.
+3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
+4. If already assigned: skip.
+
+## Time Tracking
+
+**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
+
+**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
 
 ## Output
 

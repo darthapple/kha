@@ -1,9 +1,9 @@
 ---
-name: kha:backlog-triage
+name: kha:triage
 description: Use when triaging tasks in TRIAGE status. Classifies each by type using the native Task Type field, asks clarifying questions only when needed, and moves items to BACKLOG. Processes ONE task per invocation.
 ---
 
-# kha: Backlog Triage
+# kha: Triage
 
 > **ONE TASK PER INVOCATION.** Pick the first task only (top of column by orderindex).
 > After completing it, STOP. Never continue to the next task.
@@ -35,6 +35,7 @@ Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickU
    Sort the returned tasks by their `orderindex` field ascending. Select `tasks[0]` only.
 
 3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Triage this task?" Wait for confirmation.
+   On confirmation: assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
 
 4. Fetch full task details and comment thread using `mcp__clickup__clickup_get_task` (include `description`) and `mcp__clickup__clickup_get_task_comments` — read both before classifying.
 
@@ -46,16 +47,30 @@ Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickU
 
 7. Add comment: `[kha:triage] type: <type> — <one-line reasoning>`
 
-8. Move task to `BACKLOG` status using `mcp__clickup__clickup_update_task`.
+8. Move task to `BACKLOG` status using `mcp__clickup__clickup_update_task`. Stop time tracking (see **Time Tracking**).
 
 9. **STOP.** Do not process any remaining tasks in the queue.
-   One invocation = one task. The user must re-invoke `kha:backlog-triage` for the next task.
+   One invocation = one task. The user must re-invoke `kha:triage` for the next task.
 
 ## Clarifying Questions
 
 - Ask only when classification is genuinely unclear from title, description, and comments
 - One question per task, not a list of questions
 - Wait for answer before proceeding
+
+## Assignment Routine
+
+When starting work on a task, ensure the current user is assigned:
+1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
+2. Check the task's existing `assignees` from the fetched task details.
+3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
+4. If already assigned: skip.
+
+## Time Tracking
+
+**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
+
+**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
 
 ## Output
 
