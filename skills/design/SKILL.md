@@ -5,9 +5,7 @@ description: Use when designing tasks in IN DESIGN status. Processes type:featur
 
 # kha: Design
 
-> **ONE TASK PER INVOCATION.** Pick the first task only (top of column by orderindex).
-> After completing it, STOP. Never loop to the next task.
-> Batch processing is forbidden — the user must re-invoke the skill for each task.
+> **ONE TASK PER INVOCATION.** Iterate the ordered list; skip `type:task` and `type:bug` items (auto-advancing them); present the first `type:feature` to the user. If the user declines, present the next. Process only one task per invocation — declining is selection, not processing.
 
 Processes one `type:feature` task in `IN DESIGN` status. Analyzes the codebase, defines architecture, breaks the feature into `type:task` children, and moves to `READY FOR DEVELOPMENT`.
 
@@ -32,30 +30,31 @@ The only actions allowed without confirmation: reading data and adding informati
    ```bash
    source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=in%20design&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
    ```
-   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. Select the first item from this ordered list.
+   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent.
 2. If response contains no tasks → report "No items in IN DESIGN" and stop.
 
-3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.
-   On confirmation: assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
+3. **Selection loop** — iterate the ordered list from position 0:
+   - If list is exhausted → report "No features to design in IN DESIGN" and stop.
+   - **`type:epic`** → say: "This is a `type:epic` — break it into features first. Run `kha:scoping`." STOP.
+   - **`type:task` or `type:bug`** → leaf node, no design needed: move to `READY FOR DEVELOPMENT`, report "Task `[id]` auto-advanced to READY FOR DEVELOPMENT", skip silently, advance position, continue loop.
+   - **`type:feature`** → candidate found:
+     - Present: "Found: **[title]** (ID: `[id]`). Process this task?"
+     - Confirmed → assign current user (see **Assignment Routine**), start time tracking (see **Time Tracking**), break loop, proceed to step 4.
+     - Declined → advance position, continue loop.
 
-4. **Type gate** — fetch task type:
-   - If type is `task` or `bug` → move the task to `READY FOR DEVELOPMENT`. Stop time tracking (see **Time Tracking**). Say: "This is a `type:[task|bug]` — leaf node, no design breakdown needed. Moved to READY FOR DEVELOPMENT. Run `kha:develop` on it." STOP.
-   - If type is `epic` → say: "This is a `type:epic` — epics should be broken into features first. Run `kha:scoping` on it." STOP.
-   - Proceed only for `type:feature`.
+4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
 
-5. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
-
-6. Extract business context from `[kha:scoping]` comment (user-facing acceptance criteria, affected roles).
+5. Extract business context from `[kha:scoping]` comment (user-facing acceptance criteria, affected roles).
    If no `[kha:scoping]` comment is present → stop and confirm: "There's no scoping comment on this task. Should I proceed with technical design only, or should it go back to scoping first?" Wait for answer before continuing.
 
-7. **Analyze the codebase** — read relevant files, trace existing patterns around the feature area. Understand what already exists before proposing anything new.
+6. **Analyze the codebase** — read relevant files, trace existing patterns around the feature area. Understand what already exists before proposing anything new.
 
-8. **Architecture proposal** — always present your analysis before proceeding:
+7. **Architecture proposal** — always present your analysis before proceeding:
    - If changes fit existing patterns: "I'd implement this as `<X>` in `<file/module>` because `<Y>`. Does that match your expectations?"
    - If changes require new patterns or structural adjustments: describe the new pattern, justify it, and ask for confirmation before proceeding
    - Wait for explicit agreement in both cases
 
-9. **Task breakdown** — after architecture is confirmed:
+8. **Task breakdown** — after architecture is confirmed:
    - Propose a numbered list of independent `type:task` children. Each entry: title, one-paragraph description, which part of the architecture it covers, and the **implementation-scope acceptance criteria** for that task
    - Each child task must deliver concrete, testable value on its own
    - Ask: "I'd break this into these tasks — does this look right before I create them?" Wait for answer.
@@ -73,10 +72,10 @@ The only actions allowed without confirmation: reading data and adding informati
      file hints: <relevant files or modules to look at>
      ```
 
-10. If architecture or data flow is non-trivial → ask: "I'd like to create an architecture doc with diagrams and data models. Should I?" Wait for answer.
-    - If agreed → create ClickUp doc (use Mermaid for diagrams, include data models and API contracts if relevant), link in comment
+9. If architecture or data flow is non-trivial → ask: "I'd like to create an architecture doc with diagrams and data models. Should I?" Wait for answer.
+   - If agreed → create ClickUp doc (use Mermaid for diagrams, include data models and API contracts if relevant), link in comment
 
-11. Add comment to feature task:
+10. Add comment to feature task:
     ```
     [kha:design]
     architecture: <2-3 sentence summary of the approach>
@@ -84,10 +83,9 @@ The only actions allowed without confirmation: reading data and adding informati
     doc: <url if created, else omit this line>
     ```
 
-12. Move feature task to `READY FOR DEVELOPMENT`. Stop time tracking (see **Time Tracking**).
+11. Move feature task to `READY FOR DEVELOPMENT`. Stop time tracking (see **Time Tracking**).
 
-13. **STOP.** Do not process any remaining tasks in the queue.
-    One invocation = one task. The user must re-invoke `kha:design` for the next task.
+12. Task complete. One invocation = one feature designed.
 
 ## Assignment Routine
 

@@ -5,9 +5,7 @@ description: Use when triaging tasks in TRIAGE status. Classifies each by type u
 
 # kha: Triage
 
-> **ONE TASK PER INVOCATION.** Pick the first task only (top of column by orderindex).
-> After completing it, STOP. Never continue to the next task.
-> Batch processing is forbidden — the user must re-invoke the skill for each task.
+> **ONE TASK PER INVOCATION.** Iterate the ordered list; present the first task to the user. If the user declines, present the next. Process only one task per invocation — declining is selection, not processing.
 
 Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickUp Task Type field) and moves to `BACKLOG`.
 
@@ -34,11 +32,14 @@ Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickU
    ```bash
    source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=triage&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
    ```
-   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. Select the first item from this ordered list.
+   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent.
 2. If response contains no tasks → report "No items in TRIAGE" and stop.
 
-3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Triage this task?" Wait for confirmation.
-   On confirmation: assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
+3. **Selection loop** — iterate the ordered list from position 0:
+   - If list is exhausted → report "No tasks remaining in TRIAGE" and stop.
+   - Present the task: "Found: **[title]** (ID: `[id]`). Triage this task?"
+   - Confirmed → assign current user (see **Assignment Routine**), start time tracking (see **Time Tracking**), break loop, proceed to step 4.
+   - Declined → advance position, continue loop.
 
 4. Fetch full task details and comment thread using `mcp__clickup__clickup_get_task` (include `description`) and `mcp__clickup__clickup_get_task_comments` — read both before classifying.
 
@@ -51,9 +52,6 @@ Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickU
 7. Add comment: `[kha:triage] type: <type> — <one-line reasoning>`
 
 8. Move task to `BACKLOG` status using `mcp__clickup__clickup_update_task`. Stop time tracking (see **Time Tracking**).
-
-9. **STOP.** Do not process any remaining tasks in the queue.
-   One invocation = one task. The user must re-invoke `kha:triage` for the next task.
 
 ## Clarifying Questions
 

@@ -5,9 +5,7 @@ description: Use when testing tasks in TESTING status. Writes and runs automated
 
 # kha: QA
 
-> **ONE TASK PER INVOCATION.** Pick the first task only (top of column by orderindex).
-> After completing it, STOP. Never loop to the next task.
-> Batch processing is forbidden — the user must re-invoke the skill for each task.
+> **ONE TASK PER INVOCATION.** Iterate the ordered list; silently skip features that can't advance; present the first valid task to the user. If the user declines, present the next. Feature advancement is its own unit of work — stop after applying it. Process only one task per invocation — declining is selection, not processing.
 
 Processes one task in `TESTING` status. Writes and runs automated tests tied to acceptance criteria. For criteria that genuinely cannot be automated (confirmed with human), creates a manual checklist and moves to `MANUAL TESTING`. Moves to `SHIPPED` on full automated pass.
 
@@ -34,15 +32,20 @@ Never classify a test criterion as "not automatable" without:
    ```bash
    source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=testing&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
    ```
-   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. Select the first item from this ordered list.
+   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent.
 2. If response contains no tasks → report "No items in TESTING" and stop.
 
-3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.
-   On confirmation: assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
+3. **Selection loop** — iterate the ordered list from position 0:
+   - If list is exhausted → report "No valid tasks found in TESTING" and stop.
+   - **`type:feature`** → run the **Feature Advancement Rule** (see below):
+     - If the rule advances the feature → STOP.
+     - If the rule returns "cannot advance" → skip silently, advance position, continue loop.
+   - **`type:task` or `type:bug`** → candidate found:
+     - Present: "Found: **[title]** (ID: `[id]`). Process this task?"
+     - Confirmed → assign current user (see **Assignment Routine**), start time tracking (see **Time Tracking**), break loop, proceed to step 4.
+     - Declined → advance position, continue loop.
 
 4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
-
-4b. **Type gate:** If task type is `feature` → apply **Feature Advancement Rule** (see below). Stop time tracking. STOP.
 
 5. Extract from comment thread:
    - **For `type:task`:** implementation-scope acceptance criteria from `[kha:scoping]` or `[kha:design:context]`
@@ -110,14 +113,13 @@ Never classify a test criterion as "not automatable" without:
       - <test name> — covers: <criterion> — error: <error message>
       ```
 
-12. **STOP.** Do not process any remaining tasks in the queue.
-    One invocation = one task. The user must re-invoke `kha:qa` for the next task.
+12. Task complete. One invocation = one task QA'd.
 
 ## Feature Advancement Rule
 
 When a `type:feature` is encountered, do not run tests against it as a regular task. Instead:
 
-1. Check for a `[kha:design]` comment. If none → say: "This feature hasn't been designed yet — run `kha:design` on it." STOP.
+1. Check for a `[kha:design]` comment. If none → return "cannot advance" to the selection loop (skip this feature silently).
 2. Extract child task IDs from the `child tasks:` line in `[kha:design]`.
 3. Fetch the current status of each child task via `mcp__clickup__clickup_get_task`.
 4. Find the **minimum child status** using pipeline order:
@@ -125,10 +127,9 @@ When a `type:feature` is encountered, do not run tests against it as a regular t
 5. If minimum child status > parent's current status:
    - Move parent to minimum child status via `mcp__clickup__clickup_update_task`.
    - Add ClickUp comment: `[kha:auto] parent advanced to [status] — reflects minimum status among [N] children ([list of child IDs and their statuses]).`
-   - Report: "Feature **[title]** (`[id]`) advanced: [old status] → [new status]."
+   - Report: "Feature **[title]** (`[id]`) advanced: [old status] → [new status]." STOP.
 6. If minimum child status ≤ parent's current status:
-   - Report which children are at or behind the parent's current status.
-   - Say: "Feature cannot advance — child tasks have not yet reached this phase." STOP without changing status.
+   - Return "cannot advance" to the selection loop — the loop skips this feature silently.
 
 ## Assignment Routine
 

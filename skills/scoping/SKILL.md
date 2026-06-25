@@ -5,9 +5,7 @@ description: Use when scoping tasks in BACKLOG or SCOPING status. Performs busin
 
 # kha: Scoping
 
-> **ONE TASK PER INVOCATION.** Pick the first task only (top of column by orderindex).
-> After completing it, STOP. Never loop to the next task.
-> Batch processing is forbidden — the user must re-invoke the skill for each task.
+> **ONE TASK PER INVOCATION.** Iterate the ordered list; present the first task to the user. If the user declines, present the next. Process only one task per invocation — declining is selection, not processing.
 
 Processes one task from `SCOPING` (resuming in-progress) or `BACKLOG` (starting new). Classifies intent, detects epics/features, performs business analysis, writes acceptance criteria, and moves to `IN DESIGN`.
 
@@ -42,18 +40,20 @@ The only actions allowed without confirmation: reading data, moving to the doing
      ```bash
      source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=scoping&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
      ```
-     Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. If any found: select the first item from this ordered list, skip steps 2–3. Assign current user and start time tracking. Go to step 4.
+     Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. If any found: use this ordered list for the selection loop below, skip the BACKLOG fetch. Assign current user and start time tracking after confirmation. Go to step 2.
    - If none in SCOPING: fetch tasks in `BACKLOG` the same way (replace `statuses[]=scoping` with `statuses[]=backlog`).
      - If none there either → report "Nothing to scope — no tasks in BACKLOG or SCOPING." Stop.
-     - Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it. Select the first item from this ordered list.
+     - Build column order hierarchically the same way. Use this list for the selection loop.
 
-2. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.
+2. **Selection loop** — iterate the ordered list from position 0:
+   - If list is exhausted → report "No tasks remaining to scope" and stop.
+   - Present the task: "Found: **[title]** (ID: `[id]`). Process this task?"
+   - Confirmed → move task to `SCOPING` status (doing state), assign current user (see **Assignment Routine**), start time tracking (see **Time Tracking**), break loop, proceed to step 3.
+   - Declined → advance position, continue loop.
 
-3. Move task to `SCOPING` status (doing state). Assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
+3. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
 
-4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
-
-5. **Route by task type:**
+4. **Route by task type:**
 
    ### type:epic
    - Propose a breakdown: present a numbered list of candidate `type:feature` child tasks (title + one-line description each)
@@ -119,8 +119,7 @@ The only actions allowed without confirmation: reading data, moving to the doing
      ```
    - Move task to `IN DESIGN`. Stop time tracking (see **Time Tracking**).
 
-6. **STOP.** Task is complete. Do not process any remaining tasks in the queue.
-   One invocation = one task. The user must re-invoke `kha:scoping` for the next task.
+5. Task complete. One invocation = one task scoped.
 
 ## Assignment Routine
 
