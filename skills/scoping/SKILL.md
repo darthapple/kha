@@ -42,10 +42,10 @@ The only actions allowed without confirmation: reading data, moving to the doing
      ```bash
      source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=scoping&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
      ```
-     Sort `tasks` by `orderindex` ascending. If any found: select `tasks[0]`, skip steps 2–3. Assign current user and start time tracking. Go to step 4.
+     Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. If any found: select the first item from this ordered list, skip steps 2–3. Assign current user and start time tracking. Go to step 4.
    - If none in SCOPING: fetch tasks in `BACKLOG` the same way (replace `statuses[]=scoping` with `statuses[]=backlog`).
      - If none there either → report "Nothing to scope — no tasks in BACKLOG or SCOPING." Stop.
-     - Sort by `orderindex` ascending, select `tasks[0]`.
+     - Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it. Select the first item from this ordered list.
 
 2. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.
 

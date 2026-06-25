@@ -34,7 +34,7 @@ Never classify a test criterion as "not automatable" without:
    ```bash
    source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=testing&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
    ```
-   Sort the returned `tasks` array by `orderindex` ascending. Select `tasks[0]`.
+   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. Select the first item from this ordered list.
 2. If response contains no tasks → report "No items in TESTING" and stop.
 
 3. Present the task to the user: "Found: **[title]** (ID: `[id]`). Process this task?" Wait for confirmation.

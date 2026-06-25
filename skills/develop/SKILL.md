@@ -30,7 +30,7 @@ The only actions allowed without confirmation: reading data, creating the branch
    ```bash
    source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=ready%20for%20development&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
    ```
-   Sort the returned `tasks` array by `orderindex` ascending — this reflects column order (top to bottom). Never reorder by age, priority, or any other field. Select `tasks[0]`.
+   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. Never reorder by age, priority, or any other field. Select the first item from this ordered list.
 2. If response contains no tasks → report "No items in READY FOR DEVELOPMENT" and stop.
 3. Present the top task: title, ID, and one-line summary from its `[kha:design:context]` comment (if present). Ask: "Work on this task?" Wait for confirmation.
    On confirmation: assign current user (see **Assignment Routine**).

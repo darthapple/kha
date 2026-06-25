@@ -20,7 +20,7 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
    ```bash
    source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=in%20review&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
    ```
-   Sort the returned `tasks` array by `orderindex` ascending — this reflects column order (top to bottom). Never reorder by age, priority, or any other field.
+   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. Never reorder by age, priority, or any other field. Process tasks in this order.
 2. If response contains no tasks → report "No items in IN REVIEW" and stop.
 3. For each task:
    - a. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`. Assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
