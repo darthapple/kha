@@ -39,10 +39,11 @@ Run once per session, cache `$KHA` and `$PIPELINE`:
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
-  Darwin) [ "$(uname -m)" = "arm64" ] && KHA=~/.kha/kha-darwin-arm64 || KHA=~/.kha/kha-darwin-amd64 ;;
-  Linux)  KHA=~/.kha/kha-linux-amd64 ;;
+  Darwin) [ "$(uname -m)" = "arm64" ] && KHA="$HOME/.kha/kha-darwin-arm64" || KHA="$HOME/.kha/kha-darwin-amd64" ;;
+  Linux)  KHA="$HOME/.kha/kha-linux-amd64" ;;
   *)      KHA="$APPDATA/kha/kha.exe" ;;
 esac
+[ -f .env.local ] && source .env.local
 ```
 
 After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
