@@ -112,6 +112,7 @@ git checkout -b task/<task.id>-<kebab-title>
 
 **Step 8 — Finalize:**
 ```bash
+git push origin task/<task.id>-<kebab-title>
 "$KHA" update <task.id> \
   --status "in review" \
   --comment "[kha:develop]\nbranch: task/<task.id>-<kebab-title>\ncriteria implemented:\n- <criterion> → <test name>" \

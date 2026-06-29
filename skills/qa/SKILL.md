@@ -53,6 +53,7 @@ Replace `<LIST_ID>` with the list ID from `AGENTS.md`. Replace `<PIPELINE>` with
         "scoping": { "acceptance_criteria": ["..."] },
         "design:context": { "scope": "...", "acceptance_criteria": ["..."] },
         "design": { "architecture": "..." },
+        "develop": { "branch": "task/...", "criteria_implemented": ["..."] },
         "review": { "result": "approved" }
       }
     }
@@ -85,6 +86,12 @@ If `tasks` is empty → report `message` + any `advanced_features` and stop.
   "$KHA" update <task.id> --start-timer --assign
   ```
 
+**Step 2b — Checkout the task branch:**
+```bash
+git fetch origin
+git checkout <tasks[i].kha_blocks.develop.branch>
+```
+
 **Step 3 — Assess automability per criterion:**
 - `type:task` → unit/integration tests
 - `type:feature` → Playwright e2e tests
@@ -113,9 +120,10 @@ git commit -m "test(<task.id>): add automated tests for <task title>"
 All passing → merge and ship:
 ```bash
 git checkout develop && git pull origin develop
-git merge --no-ff task/<task.id>-<kebab-title> -m "Merge task/<task.id>-<kebab-title> into develop"
+git merge --no-ff <tasks[i].kha_blocks.develop.branch> -m "Merge <tasks[i].kha_blocks.develop.branch> into develop"
 git push origin develop
-git branch -d task/<task.id>-<kebab-title>
+git branch -d <tasks[i].kha_blocks.develop.branch>
+git push origin --delete <tasks[i].kha_blocks.develop.branch>
 gh pr create --base main --head develop --title "Release: <task title>" --body "Merges develop into main shipping task <task.id>: <task title>."
 ```
 If a `develop → main` PR is already open, skip creation and add the URL to the comment instead.

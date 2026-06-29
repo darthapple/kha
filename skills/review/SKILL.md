@@ -80,16 +80,22 @@ If `tasks` is empty → report `message` + any `advanced_features` and stop.
 **Step 3 — Check context:**
 - No scoping or design blocks → ask: "No acceptance criteria found. Proceed without them, or re-scope first?" Wait.
 
-**Step 4 — Read the git diff:**
+**Step 4 — Checkout the task branch:**
+```bash
+git fetch origin
+git checkout <tasks[i].kha_blocks.develop.branch>
+```
+
+**Step 5 — Read the git diff:**
 ```bash
 git diff develop...HEAD
 ```
 
-**Step 5 — Review Layer 1: Acceptance criteria** — for each criterion in `kha_blocks.scoping` or `kha_blocks["design:context"]`. Cite file and line. Mark ✅ or ❌.
+**Step 6 — Review Layer 1: Acceptance criteria** — for each criterion in `kha_blocks.scoping` or `kha_blocks["design:context"]`. Cite file and line. Mark ✅ or ❌.
 
-**Step 6 — Review Layer 2: Best practices** — idiomatic patterns, clarity, naming, dead code, duplication. Cite file and line.
+**Step 7 — Review Layer 2: Best practices** — idiomatic patterns, clarity, naming, dead code, duplication. Cite file and line.
 
-**Step 7 — Review Layer 3: Security** — OWASP Top 10 relevant to the stack:
+**Step 8 — Review Layer 3: Security** — OWASP Top 10 relevant to the stack:
 - Injection (SQL, command, template)
 - Broken auth / session management
 - Sensitive data exposure
@@ -97,7 +103,7 @@ git diff develop...HEAD
 - XSS (frontend), insecure deserialization, input validation gaps
 - Stack-specific (prototype pollution in JS, SSRF in server code)
 
-**Step 8 — Decision:**
+**Step 9 — Decision:**
 
 All criteria ✅ and no blocking issue:
 ```bash

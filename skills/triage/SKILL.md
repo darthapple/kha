@@ -24,6 +24,10 @@ Read `AGENTS.md` once → note `list_id` and the pipeline order (the `→`-separ
 
 Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
+## AWAITING INPUT Status
+
+If `AWAITING INPUT` does not exist in the list, create it once via `mcp__clickup__clickup_update_list` (orderindex before BACKLOG, color `#e8a838`). Reuse — do not recreate.
+
 ## Steps
 
 **Step 1 — Fetch all TRIAGE tasks (run this entire block as one bash command):**
@@ -86,11 +90,43 @@ If `tasks` is empty → report `message` and stop.
   ```bash
   "$KHA" update <task.id> --start-timer --assign
   ```
-  Proceed to Step 3.
+  Proceed to Step 2b.
+
+**Step 2b — Resume check:**
+
+If `tasks[i].kha_blocks["triage:question"]` absent → fresh start, continue to Step 3.
+
+If `tasks[i].kha_blocks["triage:question"]` present:
+- Find the human reply: first comment in `tasks[i].comments` after the question comment where `user.id ≠ current_user.id`
+- **No reply found** → task was moved back before the human answered:
+  ```bash
+  "$KHA" update <task.id> --status "awaiting input"
+  ```
+  Report: "Task re-parked — no reply found yet." Stop.
+- **Reply found** → use it to resolve the pending decision. Continue to Step 4 (skip Step 3).
 
 **Step 3 — Classify** using `tasks[i].description`, `tasks[i].comments`, `tasks[i].kha_blocks`:
-- If classification is ambiguous → ask one focused question. Wait for answer.
-- If `Bug` and no reproduction steps in description or comments → ask user for them. Wait.
+
+If classification is clear → proceed to Step 4.
+
+If type is ambiguous OR task is `Bug` with no reproduction steps in description or comments:
+- Post question comment via `mcp__clickup__clickup_create_comment`:
+  ```
+  [kha:triage:question]
+  resume_status: triage
+  decision: <type classification | reproduction steps>
+  context: <what is missing or ambiguous>
+  question: <specific question>
+  options:
+  - <option 1>
+  - <option 2>
+  @<assignee username>
+  ```
+- Then:
+  ```bash
+  "$KHA" update <task.id> --status "awaiting input" --stop-timer
+  ```
+  Stop.
 
 **Step 4 — Write result:**
 ```bash

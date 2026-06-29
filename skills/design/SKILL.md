@@ -20,6 +20,10 @@ Read `AGENTS.md` once → note `list_id` and the pipeline order (the `→`-separ
 
 Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
+## AWAITING INPUT Status
+
+If `AWAITING INPUT` does not exist in the list, create it once via `mcp__clickup__clickup_update_list` (orderindex before BACKLOG, color `#e8a838`). Reuse — do not recreate.
+
 ## No Silent Assumptions
 
 Never assume architecture or scope. When ambiguous: state observation, present suggestion with reasoning, wait for explicit agreement.
@@ -92,18 +96,81 @@ Report any `advanced_features` before continuing.
   "$KHA" update <task.id> --start-timer --assign
   ```
 
+**Step 2b — Resume check:**
+
+If `tasks[i].kha_blocks["design:question"]` absent → fresh start, continue to Step 3.
+
+If `tasks[i].kha_blocks["design:question"]` present:
+- Find the human reply: first comment in `tasks[i].comments` after the question comment where `user.id ≠ current_user.id`
+- **No reply found** → task was moved back before the human answered:
+  ```bash
+  "$KHA" update <task.id> --status "awaiting input"
+  ```
+  Report: "Task re-parked — no reply found yet." Stop.
+- **Reply found** → use it to resolve the pending decision. Continue from the interrupted step (Step 3, 5, or 6 — whichever posted the question).
+
 **Step 3 — Check for scoping context:**
-- `tasks[i].kha_blocks.scoping` absent → confirm: "No scoping comment found. Proceed with technical design only, or send back to scoping?" Wait.
+
+If `tasks[i].kha_blocks.scoping` present → continue to Step 4.
+
+If absent → post question comment via `mcp__clickup__clickup_create_comment`:
+```
+[kha:design:question]
+resume_status: in design
+decision: no scoping context found
+context: this task has no [kha:scoping] block — cannot verify acceptance criteria
+question: Proceed with technical design only, or send back to scoping first?
+options:
+- proceed: design without scoping context
+- back to scoping: move this task back to BACKLOG
+@<assignee username>
+```
+Then:
+```bash
+"$KHA" update <task.id> --status "awaiting input" --stop-timer
+```
+Stop.
 
 **Step 4 — Read the codebase for context only** — read relevant files, trace existing patterns, identify which files and functions are involved. **Do not edit, create, or write any file. Never implement anything.**
 
-**Step 5 — Architecture proposal** — present the proposed approach in plain text (files to change, patterns to follow, edge cases). Always wait for explicit agreement before continuing. **Do not implement the proposal — document it in ClickUp in the next step.**
+**Step 5 — Architecture proposal** — propose the approach in plain text (files to change, patterns to follow, edge cases). Post via `mcp__clickup__clickup_create_comment`:
+```
+[kha:design:question]
+resume_status: in design
+decision: architecture approval
+context: proposed implementation approach
+question: Does this architecture look correct? Reply "approved" or describe changes.
+proposal:
+<files to change, patterns to follow, edge cases — plain text>
+@<assignee username>
+```
+Then:
+```bash
+"$KHA" update <task.id> --status "awaiting input" --stop-timer
+```
+Stop. (On resume with approval: proceed to Step 6.)
 
 **Step 6 — Route by `task_type`:**
 
 ### type:feature
-- Propose a numbered list of independent `type:task` children in plain text. Ask for confirmation. Wait. **Do not implement any of them — the list is documentation only.**
-- On agreement: create each via `mcp__clickup__clickup_create_task`:
+- Propose a numbered list of independent `type:task` children in plain text. Post via `mcp__clickup__clickup_create_comment`:
+  ```
+  [kha:design:question]
+  resume_status: in design
+  decision: child task list approval
+  context: proposed breakdown of this feature into implementation tasks
+  question: Does this task list look correct? Reply "approved" or describe changes.
+  proposal:
+  1. <Task title> — <one-line scope>
+  2. <Task title> — <one-line scope>
+  @<assignee username>
+  ```
+  Then:
+  ```bash
+  "$KHA" update <task.id> --status "awaiting input" --stop-timer
+  ```
+  Stop. (On resume with approval: create children below.)
+- On approved reply: create each via `mcp__clickup__clickup_create_task`:
   `parent_id` = current task ID, `status` = `READY FOR DEVELOPMENT`, `list_id` from AGENTS.md, `task_type` = `Task`
 - Add `[kha:design:context]` comment to each child via `mcp__clickup__clickup_create_comment`:
   ```
