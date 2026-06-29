@@ -5,7 +5,7 @@ description: Use when designing tasks in IN DESIGN status. Processes type:featur
 
 # kha: Design
 
-> **ONE TASK PER INVOCATION.** Iterate the ordered list; skip `type:task` and `type:bug` items (auto-advancing them); present the first `type:feature` to the user. If the user declines, present the next. Process only one task per invocation — declining is selection, not processing.
+> **ONE TASK PER INVOCATION.** Iterate the ordered list; skip `type:task` and `type:bug` items (auto-advancing them); present the first `type:feature` to the user. If the user declines, present the next. Feature advancement is reported in the JSON — no manual check needed.
 
 Processes one `type:feature` task in `IN DESIGN` status. Analyzes the codebase, defines architecture, breaks the feature into `type:task` children, and moves to `READY FOR DEVELOPMENT`.
 
@@ -22,45 +22,61 @@ Never assume architecture, file structure, or task scope. When anything is ambig
 2. Present your suggestion with reasoning
 3. Wait for explicit agreement before acting
 
-The only actions allowed without confirmation: reading data and adding informational comments. Moving to `READY FOR DEVELOPMENT` requires all decisions above to have been confirmed.
+## Platform Setup
+
+Run once per session, cache `$KHA`:
+```bash
+_OS=$(uname -s 2>/dev/null || echo "Windows")
+case "$_OS" in
+  Darwin) [ "$(uname -m)" = "arm64" ] && KHA=~/.kha/kha-darwin-arm64 || KHA=~/.kha/kha-darwin-amd64 ;;
+  Linux)  KHA=~/.kha/kha-linux-amd64 ;;
+  *)      KHA="$APPDATA/kha/kha.exe" ;;
+esac
+```
 
 ## Steps
 
-1. Fetch tasks in `IN DESIGN` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+1. Fetch the first IN DESIGN task (timer starts automatically; Feature Advancement Rule applied internally):
    ```bash
-   source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=in%20design&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+   result=$($KHA next "in design" --list <LIST_ID>)
    ```
-   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent.
-2. If response contains no tasks → report "No items in IN DESIGN" and stop.
+   - If `task` is null → report "No items in IN DESIGN" and stop.
+   - Report any `advanced_features` from the JSON before continuing.
 
-3. **Selection loop** — iterate the ordered list from position 0:
-   - If list is exhausted → report "No features to design in IN DESIGN" and stop.
-   - **`type:epic`** → say: "This is a `type:epic` — break it into features first. Run `kha:scoping`." STOP.
-   - **`type:task` or `type:bug`** → leaf node, no design needed: move to `READY FOR DEVELOPMENT`, report "Task `[id]` auto-advanced to READY FOR DEVELOPMENT", skip silently, advance position, continue loop.
-   - **`type:feature`** → candidate found:
-     - Present: "Found: **[title]** (ID: `[id]`). Process this task?"
-     - Confirmed → assign current user (see **Assignment Routine**), start time tracking (see **Time Tracking**), break loop, proceed to step 4.
-     - Declined → advance position, continue loop.
+2. **Type routing** (check `task.task_type` from JSON):
+   - **`type:epic`** → `$KHA cancel <task.id>`, say: "This is a `type:epic` — break it into features first. Run `kha:scoping`." STOP.
+   - **`type:task` or `type:bug`** → leaf node, auto-advance:
+     ```bash
+     $KHA update <task.id> --status "ready for development" --stop-timer
+     ```
+     Report: "Task `[id]` auto-advanced to READY FOR DEVELOPMENT."
+     Fetch next: `result=$($KHA next "in design" --list <LIST_ID> --skip <all,seen,ids>)`
+     Loop back to step 2.
+   - **`type:feature`** → candidate found, proceed to selection loop.
 
-4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
+3. **Selection loop:**
+   - Present: "Found: **[task.name]** (ID: `[task.id]`). Process this task?"
+   - **Confirmed** → assign user: `$KHA update <task.id> --assign`. Proceed to step 4.
+   - **Declined** → `$KHA cancel <task.id>`, fetch next with `--skip`, loop back to step 2.
 
-5. Extract business context from `[kha:scoping]` comment (user-facing acceptance criteria, affected roles).
-   If no `[kha:scoping]` comment is present → stop and confirm: "There's no scoping comment on this task. Should I proceed with technical design only, or should it go back to scoping first?" Wait for answer before continuing.
+4. All context is in the JSON:
+   - `task.description` — task content
+   - `kha_blocks.scoping` — user-facing acceptance criteria and affected roles
+   - If `kha_blocks.scoping` is absent → confirm: "There's no scoping comment on this task. Should I proceed with technical design only, or should it go back to scoping first?" Wait for answer.
 
-6. **Analyze the codebase** — read relevant files, trace existing patterns around the feature area. Understand what already exists before proposing anything new.
+5. **Analyze the codebase** — read relevant files, trace existing patterns around the feature area. Understand what already exists before proposing anything new.
 
-7. **Architecture proposal** — always present your analysis before proceeding:
+6. **Architecture proposal** — always present before proceeding:
    - If changes fit existing patterns: "I'd implement this as `<X>` in `<file/module>` because `<Y>`. Does that match your expectations?"
-   - If changes require new patterns or structural adjustments: describe the new pattern, justify it, and ask for confirmation before proceeding
-   - Wait for explicit agreement in both cases
+   - If changes require new patterns: describe the new pattern, justify it, ask for confirmation
+   - Wait for explicit agreement in both cases.
 
-8. **Task breakdown** — after architecture is confirmed:
-   - Propose a numbered list of independent `type:task` children. Each entry: title, one-paragraph description, which part of the architecture it covers, and the **implementation-scope acceptance criteria** for that task
-   - Each child task must deliver concrete, testable value on its own
+7. **Task breakdown** — after architecture is confirmed:
+   - Propose a numbered list of independent `type:task` children (title, description, architecture coverage, acceptance criteria)
    - Ask: "I'd break this into these tasks — does this look right before I create them?" Wait for answer.
-   - On agreement: create each as a `type:task` with `mcp__clickup__clickup_create_task`:
+   - On agreement: create each via `mcp__clickup__clickup_create_task`:
      `parent_id` = current task ID, `status` = `READY FOR DEVELOPMENT`, `list_id` from AGENTS.md, `task_type` = `Task`
-   - Add `[kha:design:context]` comment to each child task:
+   - Add `[kha:design:context]` comment to each child via `mcp__clickup__clickup_create_comment`:
      ```
      [kha:design:context]
      parent feature: <feature title> (<feature id>)
@@ -72,38 +88,19 @@ The only actions allowed without confirmation: reading data and adding informati
      file hints: <relevant files or modules to look at>
      ```
 
-9. If architecture or data flow is non-trivial → ask: "I'd like to create an architecture doc with diagrams and data models. Should I?" Wait for answer.
-   - If agreed → create ClickUp doc (use Mermaid for diagrams, include data models and API contracts if relevant), link in comment
+8. If architecture or data flow is non-trivial → ask: "I'd like to create an architecture doc with diagrams and data models. Should I?" If agreed → create ClickUp doc (Mermaid diagrams, data models, API contracts), link in comment.
 
-10. Add comment to feature task:
-    ```
-    [kha:design]
-    architecture: <2-3 sentence summary of the approach>
-    child tasks: <id>, <id>, ...
-    doc: <url if created, else omit this line>
-    ```
+9. Finalize feature task:
+   ```bash
+   $KHA update <task.id> \
+     --status "ready for development" \
+     --comment "[kha:design]\narchitecture: <2-3 sentence summary>\nchild tasks: <id>, <id>, ..." \
+     --stop-timer
+   ```
 
-11. Move feature task to `READY FOR DEVELOPMENT`. Stop time tracking (see **Time Tracking**).
-
-12. Task complete. One invocation = one feature designed.
-
-## Assignment Routine
-
-When starting work on a task, ensure the current user is assigned:
-1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
-2. Check the task's existing `assignees` from the fetched task details.
-3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
-4. If already assigned: skip.
-
-## Time Tracking
-
-**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
-
-**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
+10. Task complete. One invocation = one feature designed.
 
 ## Output
-
-Report for the single processed task:
 
 | Field | Value |
 |-------|-------|

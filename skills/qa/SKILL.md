@@ -5,157 +5,129 @@ description: Use when testing tasks in TESTING status. Writes and runs automated
 
 # kha: QA
 
-> **ONE TASK PER INVOCATION.** Iterate the ordered list; silently skip features that can't advance; present the first valid task to the user. If the user declines, present the next. Feature advancement is its own unit of work — stop after applying it. Process only one task per invocation — declining is selection, not processing.
+> **ONE TASK PER INVOCATION.** The binary handles Feature Advancement Rule and ordering. Present the first valid task to the user. Feature advancement events are reported in the JSON response.
 
 Processes one task in `TESTING` status. Writes and runs automated tests tied to acceptance criteria. For criteria that genuinely cannot be automated (confirmed with human), creates a manual checklist and moves to `MANUAL TESTING`. Moves to `SHIPPED` on full automated pass.
 
 ## Context
 
 1. Read `AGENTS.md` → get list ID, pipeline doc IDs
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names; check if `MANUAL TESTING` status exists in the list
-   (Taxonomy doc not needed by this skill — no task classification performed)
+2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names; check if `MANUAL TESTING` status exists
 3. Read the project's test setup: test runner, test directory structure, existing test files, Playwright config (if any)
 
 ## MANUAL TESTING Status
 
-If `MANUAL TESTING` status does not exist in the ClickUp list, create it once using `mcp__clickup__clickup_update_list` or equivalent before moving any task there. Use orderindex after `TESTING`, color `#f4c430`. Reuse from then on — do not recreate.
+If `MANUAL TESTING` status does not exist in the ClickUp list, create it once using `mcp__clickup__clickup_update_list` before moving any task there. Use orderindex after `TESTING`, color `#f4c430`. Reuse — do not recreate.
 
 ## No Silent Assumptions
 
-Never classify a test criterion as "not automatable" without:
+Never classify a criterion as "not automatable" without:
 1. Explaining exactly why it cannot be automated
 2. Getting explicit human confirmation
 
+## Platform Setup
+
+Run once per session, cache `$KHA`:
+```bash
+_OS=$(uname -s 2>/dev/null || echo "Windows")
+case "$_OS" in
+  Darwin) [ "$(uname -m)" = "arm64" ] && KHA=~/.kha/kha-darwin-arm64 || KHA=~/.kha/kha-darwin-amd64 ;;
+  Linux)  KHA=~/.kha/kha-linux-amd64 ;;
+  *)      KHA="$APPDATA/kha/kha.exe" ;;
+esac
+```
+
 ## Steps
 
-1. Fetch tasks in `TESTING` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+1. Fetch the first TESTING task (Feature Advancement Rule applied internally; timer starts automatically):
    ```bash
-   source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=testing&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+   result=$($KHA next testing --list <LIST_ID>)
    ```
-   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent.
-2. If response contains no tasks → report "No items in TESTING" and stop.
+   - If `task` is null → report "No items in TESTING" and stop.
+   - Report any `advanced_features` from the JSON.
 
-3. **Selection loop** — iterate the ordered list from position 0:
-   - If list is exhausted → report "No valid tasks found in TESTING" and stop.
-   - **`type:feature`** → run the **Feature Advancement Rule** (see below):
-     - If the rule advances the feature → STOP.
-     - If the rule returns "cannot advance" → skip silently, advance position, continue loop.
-   - **`type:task` or `type:bug`** → candidate found:
-     - Present: "Found: **[title]** (ID: `[id]`). Process this task?"
-     - Confirmed → assign current user (see **Assignment Routine**), start time tracking (see **Time Tracking**), break loop, proceed to step 4.
-     - Declined → advance position, continue loop.
+2. **Selection loop:**
+   - Present: "Found: **[task.name]** (ID: `[task.id]`). Process this task?"
+   - **Confirmed** → assign user: `$KHA update <task.id> --assign`. Proceed to step 3.
+   - **Declined** → `$KHA cancel <task.id>`, fetch next:
+     ```bash
+     result=$($KHA next testing --list <LIST_ID> --skip <all,seen,ids>)
+     ```
+     Loop back to step 2.
 
-4. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
+3. Extract from JSON:
+   - For `type:task`: implementation-scope criteria from `kha_blocks["design:context"]` or `kha_blocks.scoping`
+   - For `type:feature`: user-facing criteria from `kha_blocks.scoping`
+   - Architecture context from `kha_blocks.design`
+   - Review summary from `kha_blocks.review`
 
-5. Extract from comment thread:
-   - **For `type:task`:** implementation-scope acceptance criteria from `[kha:scoping]` or `[kha:design:context]`
-   - **For `type:feature`:** user-facing acceptance criteria from `[kha:scoping]`
-   - Architecture context from `[kha:design]`
-   - Review summary from `[kha:review]`
+4. **Assess automability per criterion:**
+   - `type:task` criteria → unit tests or integration tests
+   - `type:feature` criteria → Playwright e2e tests
+   - Unclear → confirm with human: "I couldn't find a reliable way to automate `<criterion>` — here's why: `<reason>`. Do you agree this needs manual testing?" Wait for explicit agreement.
 
-6. **Assess automability per criterion:**
-   - `type:task` criteria (implementation-scope) → unit tests or integration tests
-   - `type:feature` criteria (user-facing flows) → Playwright e2e tests
-   - Unclear → stop and confirm: "I couldn't find a reliable way to automate '<criterion>' — here's why: <reason>. Do you agree this needs manual testing?" Wait for explicit agreement before classifying as manual.
-
-7. **Write automated tests** (before running):
-   - One test per criterion — test names describe the behavior: `test('resets password when valid token provided')`
-   - Unit tests: test one function/method, mock all external dependencies (DB, network, time)
+5. **Write automated tests** (before running):
+   - One test per criterion — names describe behavior: `test('resets password when valid token provided')`
+   - Unit tests: one function/method, mock all external dependencies
    - Integration tests: test module boundaries, mock only external services
-   - Playwright e2e: test full user flows against the running app; use `page.getByRole`, `page.getByLabel`, `page.getByText` — never CSS class or ID selectors
-   - Each test has exactly one assertion focus — split tests that check multiple behaviors
+   - Playwright e2e: `page.getByRole`, `page.getByLabel`, `page.getByText` — never CSS class or ID selectors
+   - Each test has exactly one assertion focus
 
-8. **Ask before committing:** "I've written <N> tests covering <criteria list>. Here's a summary: <test names>. Should I commit them?" Wait for confirmation.
+6. **Ask before committing:** "I've written `<N>` tests covering `<criteria list>`. Here's a summary: `<test names>`. Should I commit them?" Wait for confirmation.
 
-9. On confirmation: commit test files
+7. Commit test files:
    ```bash
    git add <test files>
-   git commit -m "test(<task-id>): add automated tests for <task title>"
+   git commit -m "test(<task.id>): add automated tests for <task title>"
    ```
-   **Note:** Tests are committed before running. If the run fails, the commit remains — this is intentional: the test files capture the test intent and are useful for the developer to inspect even when failing.
 
-10. **Run all automated tests** and report pass/fail per test mapped to its criterion
+8. **Run all automated tests** and report pass/fail per test mapped to its criterion.
 
-11. **Decision:**
-    - **Rule: fail overrides manual.** If any automated test fails, the task stays in `TESTING` regardless of manual criteria. Fix failing tests first, then re-run. Manual criteria are only evaluated when all automated tests pass.
-    - All criteria covered by passing tests → merge task branch into `develop`, open a PR to merge `develop` into `main`, then move to `SHIPPED`. Stop time tracking (see **Time Tracking**):
-      ```bash
-      git checkout develop && git pull origin develop
-      git merge --no-ff task/<task-id>-<kebab-title> -m "Merge task/<task-id>-<kebab-title> into develop"
-      git push origin develop
-      git branch -d task/<task-id>-<kebab-title>
-      ```
-      Then open a PR from `develop` into `main`:
-      ```bash
-      gh pr create --base main --head develop --title "Release: <task title>" --body "Merges develop into main shipping task <task-id>: <task title>."
-      ```
-      If a `develop → main` PR is already open, skip creation and add the PR URL to the comment instead.
-      Then add comment and move status:
-      ```
-      [kha:qa] result: passed
-      automated: <N> tests, all passing
-      coverage:
-      - <criterion> → <test name>
-      pr: <develop→main PR URL>
-      ```
-    - Some criteria need manual testing (confirmed with human) → ensure `MANUAL TESTING` status exists, move task there. Stop time tracking (see **Time Tracking**):
-      ```
-      [kha:qa] result: manual required
-      automated: <N> tests, all passing
-      manual checklist:
-      - [ ] <specific step: what to do and what to verify>
-      - [ ] <specific step: what to do and what to verify>
-      ```
-    - Automated tests fail → stay in `TESTING`. Stop time tracking (see **Time Tracking**):
-      ```
-      [kha:qa] result: failed
-      failing tests:
-      - <test name> — covers: <criterion> — error: <error message>
-      ```
+9. **Decision:**
 
-12. Task complete. One invocation = one task QA'd.
+   **Rule: fail overrides manual.** Any failing automated test keeps task in TESTING regardless of manual criteria.
 
-## Feature Advancement Rule
+   - **All passing** → merge and ship:
+     ```bash
+     git checkout develop && git pull origin develop
+     git merge --no-ff task/<task.id>-<kebab-title> -m "Merge task/<task.id>-<kebab-title> into develop"
+     git push origin develop
+     git branch -d task/<task.id>-<kebab-title>
+     gh pr create --base main --head develop --title "Release: <task title>" --body "Merges develop into main shipping task <task.id>: <task title>."
+     ```
+     If a `develop → main` PR is already open, skip creation and add the PR URL to the comment.
+     ```bash
+     $KHA update <task.id> \
+       --status shipped \
+       --comment "[kha:qa]\nresult: passed\nautomated: <N> tests, all passing\ncoverage:\n- <criterion> → <test name>\npr: <PR URL>" \
+       --stop-timer
+     ```
 
-When a `type:feature` is encountered, do not run tests against it as a regular task. Instead:
+   - **Manual testing required** (all automated pass, some criteria confirmed as manual):
+     ```bash
+     $KHA update <task.id> \
+       --status "manual testing" \
+       --comment "[kha:qa]\nresult: manual required\nautomated: <N> tests, all passing\nmanual checklist:\n- [ ] <specific step: what to do and what to verify>" \
+       --stop-timer
+     ```
 
-1. Check for a `[kha:design]` comment. If none → return "cannot advance" to the selection loop (skip this feature silently).
-2. Extract child task IDs from the `child tasks:` line in `[kha:design]`.
-3. Fetch the current status of each child task via `mcp__clickup__clickup_get_task`.
-4. Find the **minimum child status** using pipeline order:
-   `TRIAGE < BACKLOG < SCOPING < IN DESIGN < READY FOR DEVELOPMENT < IN DEVELOPMENT < IN REVIEW < TESTING < SHIPPED`
-5. If minimum child status > parent's current status:
-   - Move parent to minimum child status via `mcp__clickup__clickup_update_task`.
-   - Add ClickUp comment: `[kha:auto] parent advanced to [status] — reflects minimum status among [N] children ([list of child IDs and their statuses]).`
-   - Report: "Feature **[title]** (`[id]`) advanced: [old status] → [new status]." STOP.
-6. If minimum child status ≤ parent's current status:
-   - Return "cannot advance" to the selection loop — the loop skips this feature silently.
-
-## Assignment Routine
-
-When starting work on a task, ensure the current user is assigned:
-1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
-2. Check the task's existing `assignees` from the fetched task details.
-3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
-4. If already assigned: skip.
-
-## Time Tracking
-
-**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
-
-**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
+   - **Automated tests fail:**
+     ```bash
+     $KHA update <task.id> \
+       --comment "[kha:qa]\nresult: failed\nfailing tests:\n- <test name> — covers: <criterion> — error: <error>" \
+       --stop-timer
+     ```
+     Task stays in TESTING.
 
 ## Test Writing Guidelines
 
 - Unit tests: one function/method per test, mock all external dependencies
 - Integration tests: test module boundaries, mock only external services (DB, APIs, file system)
-- Playwright e2e: use `page.getByRole()`, `page.getByLabel()`, `page.getByText()` — never CSS class or ID selectors
-- Test names use plain English describing behavior: `test('shows error when email not found')`
+- Playwright e2e: `page.getByRole()`, `page.getByLabel()`, `page.getByText()` — never CSS class or ID selectors
+- Test names use plain English: `test('shows error when email not found')`
 - Each test checks one thing — split tests that assert on multiple independent behaviors
 
 ## Output
-
-Report for the single processed task:
 
 | Field | Value |
 |-------|-------|

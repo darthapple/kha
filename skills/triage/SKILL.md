@@ -24,34 +24,50 @@ Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickU
 | `Epic` | Large initiative grouping multiple Features. Gets broken into Features by kha:scoping. |
 | `Task` | Everything else — docs, refactors, research, standalone implementation work. |
 
-**Important:** Classification is set using the native ClickUp Task Type field (`task_type` in `mcp__clickup__clickup_update_task`), not tags or labels.
+## Platform Setup
+
+Run once per session, cache `$KHA`:
+```bash
+_OS=$(uname -s 2>/dev/null || echo "Windows")
+case "$_OS" in
+  Darwin) [ "$(uname -m)" = "arm64" ] && KHA=~/.kha/kha-darwin-arm64 || KHA=~/.kha/kha-darwin-amd64 ;;
+  Linux)  KHA=~/.kha/kha-linux-amd64 ;;
+  *)      KHA="$APPDATA/kha/kha.exe" ;;
+esac
+```
 
 ## Steps
 
-1. Fetch tasks in `TRIAGE` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+1. Fetch the first TRIAGE task (timer starts automatically):
    ```bash
-   source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=triage&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+   result=$($KHA next triage --list <LIST_ID>)
    ```
-   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent.
-2. If response contains no tasks → report "No items in TRIAGE" and stop.
+   Parse `result` as JSON. If `task` is null → report `message` and stop.
 
-3. **Selection loop** — iterate the ordered list from position 0:
-   - If list is exhausted → report "No tasks remaining in TRIAGE" and stop.
-   - Present the task: "Found: **[title]** (ID: `[id]`). Triage this task?"
-   - Confirmed → assign current user (see **Assignment Routine**), start time tracking (see **Time Tracking**), break loop, proceed to step 4.
-   - Declined → advance position, continue loop.
+2. **Selection loop:**
+   - Present: "Found: **[task.name]** (ID: `[task.id]`). Triage this task?"
+   - **Confirmed** → proceed to step 3.
+   - **Declined** → cancel timer and get next:
+     ```bash
+     $KHA cancel <task.id>
+     result=$($KHA next triage --list <LIST_ID> --skip <all,seen,ids>)
+     ```
+     If task null → report "No tasks remaining in TRIAGE" and stop. Otherwise loop.
 
-4. Fetch full task details and comment thread using `mcp__clickup__clickup_get_task` (include `description`) and `mcp__clickup__clickup_get_task_comments` — read both before classifying.
+3. Classify type using the rules above. All context is in the JSON:
+   - `task.name`, `task.description` — task content
+   - `comments` array — full comment thread
+   - If classification is ambiguous → ask one focused question. Wait for answer.
+   - If `Bug` and no reproduction steps in description or comments → ask user for them. Wait for answer.
 
-5. Classify type using the rules above (consider title, description, and any comments).
-   - If classification is ambiguous → ask user one focused question before continuing. Wait for answer.
-   - If `Bug` and no reproduction steps in description or comments → ask user for them before continuing. Wait for answer.
-
-6. Set the native task type using `mcp__clickup__clickup_update_task` with `task_type` = `Bug`, `Feature`, `Epic`, or `Task`.
-
-7. Add comment: `[kha:triage] type: <type> — <one-line reasoning>`
-
-8. Move task to `BACKLOG` status using `mcp__clickup__clickup_update_task`. Stop time tracking (see **Time Tracking**).
+4. Write result (sets type, assigns current user, adds comment, moves to BACKLOG, stops timer):
+   ```bash
+   $KHA update <task.id> \
+     --status backlog \
+     --comment "[kha:triage]\ntype: <Type>\nreasoning: <one-line reasoning>" \
+     --assign \
+     --stop-timer
+   ```
 
 ## Clarifying Questions
 
@@ -59,23 +75,7 @@ Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickU
 - One question per task, not a list of questions
 - Wait for answer before proceeding
 
-## Assignment Routine
-
-When starting work on a task, ensure the current user is assigned:
-1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
-2. Check the task's existing `assignees` from the fetched task details.
-3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
-4. If already assigned: skip.
-
-## Time Tracking
-
-**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
-
-**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
-
 ## Output
-
-Report for the single processed task:
 
 | Field | Value |
 |-------|-------|

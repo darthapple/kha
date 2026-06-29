@@ -33,34 +33,56 @@ Never assume intent, scope, or classification. When anything is ambiguous:
 
 The only actions allowed without confirmation: reading data, moving to the doing state (`SCOPING`), and adding informational comments.
 
+## Platform Setup
+
+Run once per session, cache `$KHA`:
+```bash
+_OS=$(uname -s 2>/dev/null || echo "Windows")
+case "$_OS" in
+  Darwin) [ "$(uname -m)" = "arm64" ] && KHA=~/.kha/kha-darwin-arm64 || KHA=~/.kha/kha-darwin-amd64 ;;
+  Linux)  KHA=~/.kha/kha-linux-amd64 ;;
+  *)      KHA="$APPDATA/kha/kha.exe" ;;
+esac
+```
+
 ## Steps
 
-1. **Find the task to process:**
-   - First: fetch tasks in `SCOPING` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+1. **Find the task to process — try SCOPING first, fall back to BACKLOG:**
+   ```bash
+   result=$($KHA next scoping --list <LIST_ID>)
+   # if task is null:
+   result=$($KHA next backlog --list <LIST_ID>)
+   ```
+   If both return null → report "Nothing to scope — no tasks in BACKLOG or SCOPING." Stop.
+   Timer starts automatically on whichever task is returned.
+
+2. **Selection loop:**
+   - Present: "Found: **[task.name]** (ID: `[task.id]`). Process this task?"
+   - **Confirmed** → move to doing state and assign user:
      ```bash
-     source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=scoping&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+     $KHA update <task.id> --status scoping --assign
      ```
-     Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. If any found: use this ordered list for the selection loop below, skip the BACKLOG fetch. Assign current user and start time tracking after confirmation. Go to step 2.
-   - If none in SCOPING: fetch tasks in `BACKLOG` the same way (replace `statuses[]=scoping` with `statuses[]=backlog`).
-     - If none there either → report "Nothing to scope — no tasks in BACKLOG or SCOPING." Stop.
-     - Build column order hierarchically the same way. Use this list for the selection loop.
+     Proceed to step 3.
+   - **Declined** → cancel timer and get next:
+     ```bash
+     $KHA cancel <task.id>
+     result=$($KHA next <same-status> --list <LIST_ID> --skip <all,seen,ids>)
+     ```
+     If null → try the other status or report "No tasks remaining." Loop.
 
-2. **Selection loop** — iterate the ordered list from position 0:
-   - If list is exhausted → report "No tasks remaining to scope" and stop.
-   - Present the task: "Found: **[title]** (ID: `[id]`). Process this task?"
-   - Confirmed → move task to `SCOPING` status (doing state), assign current user (see **Assignment Routine**), start time tracking (see **Time Tracking**), break loop, proceed to step 3.
-   - Declined → advance position, continue loop.
+3. All context is in the JSON from step 1:
+   - `task.name`, `task.description` — task content
+   - `comments` array — full comment thread
+   - `kha_blocks` — parsed `[kha:*]` comment blocks
 
-3. Fetch full task details: `mcp__clickup__clickup_get_task` (include `description`) + `mcp__clickup__clickup_get_task_comments`
-
-4. **Route by task type:**
+4. **Route by task type** (`task.task_type` from JSON):
 
    ### type:epic
    - Propose a breakdown: present a numbered list of candidate `type:feature` child tasks (title + one-line description each)
    - Ask: "I'd break this epic into these features — does this look right before I create them?" Wait for answer.
    - On agreement: create each child as a `type:feature` task using `mcp__clickup__clickup_create_task`:
      `parent_id` = epic task ID, `status` = `BACKLOG`, `list_id` from AGENTS.md, `task_type` = `Feature`
-   - Add `[kha:scoping:context]` comment to each child task:
+   - Add `[kha:scoping:context]` comment to each child task via `mcp__clickup__clickup_create_comment`:
      ```
      [kha:scoping:context]
      parent epic: <epic title> (<epic id>)
@@ -68,76 +90,61 @@ The only actions allowed without confirmation: reading data, moving to the doing
      context: <relevant background the child task needs to be scoped independently>
      ```
    - The epic itself does NOT get acceptance criteria — those belong to the child features
-   - Add comment to epic:
+   - Finalize epic:
+     ```bash
+     $KHA update <task.id> \
+       --status "in design" \
+       --comment "[kha:scoping]\ntype: epic\nrouted: epic\nchild features: <id>, <id>, ..." \
+       --stop-timer
      ```
-     [kha:scoping]
-     type: epic
-     routed: epic
-     child features: <id>, <id>, ...
-     ```
-   - Move epic to `IN DESIGN`. Stop time tracking (see **Time Tracking**).
 
    ### type:feature
    - **Classify intent** — business or technical?
      - Technical = refactor, devops, infra with no user-facing behavior change
      - If ambiguous → state uncertainty, present reasoning, ask before proceeding
-     - If clearly technical → add comment `[kha:scoping] routed: non-business → IN DESIGN`, move to `IN DESIGN`, stop time tracking (see **Time Tracking**), stop
+     - If clearly technical:
+       ```bash
+       $KHA update <task.id> \
+         --status "in design" \
+         --comment "[kha:scoping]\nrouted: non-business → IN DESIGN" \
+         --stop-timer
+       ```
+       Stop.
    - **Business analysis** (business-routed features):
      - Write **user-facing** acceptance criteria: each is user-visible, testable, unambiguous, starts with a verb
-       (e.g., "User receives a reset email when requesting password reset")
      - Identify user roles affected
-     - If UI interaction is non-trivial → ask: "I'd like to create a wireframe/low-level design doc before proceeding. Should I?" Wait for answer.
-     - If agreed → create a ClickUp doc with wireframes and flow description, link in comment
-   - Add comment to task:
+     - If UI interaction is non-trivial → ask: "I'd like to create a wireframe/low-level design doc before proceeding. Should I?" If agreed → create a ClickUp doc, link in comment
+   - Finalize:
+     ```bash
+     $KHA update <task.id> \
+       --status "in design" \
+       --comment "[kha:scoping]\ntype: feature\nrouted: business\naffected roles: <roles>\nacceptance criteria:\n- <criterion>\n- <criterion>" \
+       --stop-timer
      ```
-     [kha:scoping]
-     type: feature
-     routed: business
-     affected roles: <comma-separated list>
-     acceptance criteria:
-     - <user-facing criterion — starts with verb>
-     - <user-facing criterion — starts with verb>
-     doc: <url if created, else omit this line>
-     ```
-   - Move task to `IN DESIGN`. Stop time tracking (see **Time Tracking**).
 
    ### type:task or type:bug
    - **Classify intent** — business or technical? (same rules as feature above)
-   - If clearly technical → add comment `[kha:scoping] routed: non-business → IN DESIGN`, move to `IN DESIGN`, stop time tracking (see **Time Tracking**), stop
+   - If clearly technical:
+     ```bash
+     $KHA update <task.id> \
+       --status "in design" \
+       --comment "[kha:scoping]\nrouted: non-business → IN DESIGN" \
+       --stop-timer
+     ```
+     Stop.
    - **Business analysis** (business-routed tasks):
      - Write **implementation-scope** acceptance criteria: technical, testable, specific
-       (e.g., "POST /api/reset-password returns 200 with valid token")
-     - Identify what this task delivers
-   - Add comment to task:
+   - Finalize:
+     ```bash
+     $KHA update <task.id> \
+       --status "in design" \
+       --comment "[kha:scoping]\ntype: task\nrouted: business\nacceptance criteria:\n- <criterion>\n- <criterion>" \
+       --stop-timer
      ```
-     [kha:scoping]
-     type: task
-     routed: business
-     acceptance criteria:
-     - <implementation criterion — starts with verb>
-     - <implementation criterion — starts with verb>
-     ```
-   - Move task to `IN DESIGN`. Stop time tracking (see **Time Tracking**).
 
 5. Task complete. One invocation = one task scoped.
 
-## Assignment Routine
-
-When starting work on a task, ensure the current user is assigned:
-1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
-2. Check the task's existing `assignees` from the fetched task details.
-3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
-4. If already assigned: skip.
-
-## Time Tracking
-
-**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
-
-**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
-
 ## Output
-
-Report for the single processed task:
 
 | Field | Value |
 |-------|-------|

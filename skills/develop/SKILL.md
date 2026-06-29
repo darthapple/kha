@@ -5,14 +5,14 @@ description: Use when developing tasks in READY FOR DEVELOPMENT status. Iterates
 
 # kha: Develop
 
-> **ONE TASK PER INVOCATION.** Iterate the ordered list; silently skip features that can't advance and epics; present the first valid `type:task` or `type:bug` to the user. Feature advancement (when it applies) is itself the unit of work — stop after applying it.
+> **ONE TASK PER INVOCATION.** The binary handles Feature Advancement Rule and ordering. Present the first valid `type:task` or `type:bug` to the user. Feature advancement events are reported in the JSON response.
 
-Finds the first actionable `type:task` or `type:bug` in `READY FOR DEVELOPMENT` (iterating past features and epics that need no development work), implements it using TDD with small commits on a dedicated branch, and moves to `IN REVIEW`.
+Finds the first actionable `type:task` or `type:bug` in `READY FOR DEVELOPMENT`, implements it using TDD with small commits on a dedicated branch, and moves to `IN REVIEW`.
 
 ## Context
 
-1. Read `AGENTS.md` → get list ID, pipeline doc ID, taxonomy doc ID
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names (`READY FOR DEVELOPMENT`, `IN DEVELOPMENT`, `IN REVIEW`)
+1. Read `AGENTS.md` → get list ID, pipeline doc ID
+2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names
 
 ## No Silent Assumptions
 
@@ -21,100 +21,79 @@ Never assume architecture, file structure, or implementation scope. When anythin
 2. Present your suggestion with reasoning
 3. Wait for explicit agreement before acting
 
-The only actions allowed without confirmation: reading data, creating the branch, moving to `IN DEVELOPMENT`, and adding informational comments.
+## Platform Setup
+
+Run once per session, cache `$KHA`:
+```bash
+_OS=$(uname -s 2>/dev/null || echo "Windows")
+case "$_OS" in
+  Darwin) [ "$(uname -m)" = "arm64" ] && KHA=~/.kha/kha-darwin-arm64 || KHA=~/.kha/kha-darwin-amd64 ;;
+  Linux)  KHA=~/.kha/kha-linux-amd64 ;;
+  *)      KHA="$APPDATA/kha/kha.exe" ;;
+esac
+```
 
 ## Steps
 
-1. Fetch tasks in `READY FOR DEVELOPMENT` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+1. Fetch the first actionable task (Feature Advancement Rule applied internally; timer starts automatically):
    ```bash
-   source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=ready%20for%20development&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+   result=$($KHA next "ready for development" --list <LIST_ID>)
    ```
-   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. Never reorder by age, priority, or any other field.
-2. If response contains no tasks → report "No items in READY FOR DEVELOPMENT" and stop.
-3. **Selection loop** — iterate the ordered list from position 0:
-   - If list is exhausted → report "No valid tasks found in READY FOR DEVELOPMENT" and stop.
-   - **`type:epic`** → say: "This is a `type:epic` — break it into features first. Run `kha:scoping`." STOP.
-   - **`type:feature`** → run the **Feature Advancement Rule** (see below):
-     - If the rule advances the feature → STOP.
-     - If the rule returns "cannot advance" → skip silently, advance position, continue loop.
-   - **`type:task` or `type:bug`** → candidate found:
-     - Present: title, ID, one-line summary from `[kha:design:context]` comment if present.
-     - Ask: "Work on this task?"
-     - Confirmed → assign current user (see **Assignment Routine**), break loop, proceed to step 4.
-     - Declined → advance position, continue loop.
+   - If `task` is null → report "No items in READY FOR DEVELOPMENT" and stop.
+   - Report any `advanced_features` from the JSON.
 
-4. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`
+2. **Type gate** (check `task.task_type`):
+   - **`type:epic`** → `$KHA cancel <task.id>`, say: "This is a `type:epic` — break it into features first. Run `kha:scoping`." STOP.
+   - **`type:feature`** → should not occur (binary skips these); if it does: `$KHA cancel <task.id>`, fetch next with `--skip`, loop.
+   - **`type:task` or `type:bug`** → proceed to selection loop.
 
-5. Extract:
-   - Acceptance criteria from `[kha:scoping]` comment or `[kha:design:context]` comment
-   - Architecture context from `[kha:design:context]` comment
-   - If neither exists → ask: "I couldn't find scoping or design comments on this task. Should I proceed without them, or should it go back to design first?" Wait for answer before proceeding.
+3. **Selection loop:**
+   - Present: task name, ID, one-line summary from `kha_blocks["design:context"].scope` if present.
+   - Ask: "Work on this task?"
+   - **Confirmed** → assign user: `$KHA update <task.id> --assign`. Proceed to step 4.
+   - **Declined** → `$KHA cancel <task.id>`, fetch next:
+     ```bash
+     result=$($KHA next "ready for development" --list <LIST_ID> --skip <all,seen,ids>)
+     ```
+     Loop back to step 2.
 
-6. Create branch from `develop` — always branch from `develop`, never from `main`:
+4. Extract from JSON:
+   - Acceptance criteria from `kha_blocks["design:context"].acceptance_criteria` or `kha_blocks.scoping.acceptance_criteria`
+   - Architecture context from `kha_blocks["design:context"].architecture` and `file_hints`
+   - If neither exists → ask: "I couldn't find scoping or design comments on this task. Should I proceed without them, or should it go back to design first?" Wait before proceeding.
+
+5. Create branch from `develop`:
    ```bash
    git checkout develop && git pull origin develop
-   git checkout -b task/<task-id>-<kebab-title>
+   git checkout -b task/<task.id>-<kebab-title>
    ```
 
-7. Move task to `IN DEVELOPMENT`. Start time tracking (see **Time Tracking**).
+6. Move task to IN DEVELOPMENT (timer already running from step 1):
+   ```bash
+   $KHA update <task.id> --status "in development"
+   ```
 
-8. **TDD loop** — for each acceptance criterion from `[kha:scoping]` or `[kha:design:context]`, in order:
-   - a. **Red** — write a failing test that exercises exactly that criterion. Run it to confirm it fails for the right reason (not a setup error).
-   - b. Commit: `test(<task-id>): <what it tests>`
-   - c. **Green** — implement the minimum code to make the test pass. Read `[kha:design:context]` file hints first; follow existing codebase patterns.
-   - d. Run all tests to confirm the new test passes and nothing regresses.
-   - e. Commit: `feat(<task-id>): <what was implemented>` (use `fix(<task-id>):` if task type is `bug`)
-   - f. If implementation required a structural decision not covered by `[kha:design:context]` → state the decision and ask for confirmation before proceeding.
-   - g. If a test cannot be made green after a genuine implementation attempt → report the blocker with the failing test name and error, leave the task in `IN DEVELOPMENT`, and stop. Do not move to `IN REVIEW` with failing tests.
+7. **TDD loop** — for each acceptance criterion, in order:
+   - a. **Red** — write a failing test. Run it to confirm it fails for the right reason.
+   - b. Commit: `test(<task.id>): <what it tests>`
+   - c. **Green** — implement minimum code to pass. Follow `file_hints` and existing patterns.
+   - d. Run all tests to confirm new test passes and nothing regresses.
+   - e. Commit: `feat(<task.id>): <what was implemented>` (use `fix(...)` for bugs)
+   - f. If a structural decision arose not covered by design context → state it and ask for confirmation before proceeding.
+   - g. If a test cannot be made green → report blocker with failing test name and error. Leave task in IN DEVELOPMENT. Stop. Do not move to IN REVIEW with failing tests.
 
-9. **Refactor pass** (optional) — after all criteria are green, clean up duplication or clarity issues introduced during the loop. Run all tests again. If anything was refactored:
-   Commit: `refactor(<task-id>): <what was cleaned up>`
+8. **Refactor pass** (optional) — clean up duplication or clarity issues. Run all tests again.
+   Commit: `refactor(<task.id>): <what was cleaned up>`
 
-10. Add comment to the ClickUp task:
-    ```
-    [kha:develop]
-    branch: task/<task-id>-<kebab-title>
-    criteria implemented:
-    - <criterion> → <test name>
-    - <criterion> → <test name>
-    notes: <architectural decisions made during implementation, or omit this line>
-    ```
-
-11. Move task to `IN REVIEW`. Stop time tracking (see **Time Tracking**).
-
-## Feature Advancement Rule
-
-When a `type:feature` is encountered, do not process it as a regular task. Instead:
-
-1. Check for a `[kha:design]` comment. If none → return "cannot advance" to the selection loop (skip this feature silently).
-2. Extract child task IDs from the `child tasks:` line in `[kha:design]`.
-3. Fetch the current status of each child task via `mcp__clickup__clickup_get_task`.
-4. Find the **minimum child status** using pipeline order:
-   `TRIAGE < BACKLOG < SCOPING < IN DESIGN < READY FOR DEVELOPMENT < IN DEVELOPMENT < IN REVIEW < TESTING < SHIPPED`
-5. If minimum child status > parent's current status:
-   - Move parent to minimum child status via `mcp__clickup__clickup_update_task`.
-   - Add ClickUp comment: `[kha:auto] parent advanced to [status] — reflects minimum status among [N] children ([list of child IDs and their statuses]).`
-   - Report: "Feature **[title]** (`[id]`) advanced: [old status] → [new status]." STOP.
-6. If minimum child status ≤ parent's current status:
-   - Return "cannot advance" to the selection loop — the loop skips this feature silently.
-
-## Assignment Routine
-
-When starting work on a task, ensure the current user is assigned:
-1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
-2. Check the task's existing `assignees` from the fetched task details.
-3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
-4. If already assigned: skip.
-
-## Time Tracking
-
-**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
-
-**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
+9. Finalize:
+   ```bash
+   $KHA update <task.id> \
+     --status "in review" \
+     --comment "[kha:develop]\nbranch: task/<task.id>-<kebab-title>\ncriteria implemented:\n- <criterion> → <test name>\nnotes: <decisions, or omit>" \
+     --stop-timer
+   ```
 
 ## Output
-
-Report for the single processed task:
 
 | Field | Value |
 |-------|-------|

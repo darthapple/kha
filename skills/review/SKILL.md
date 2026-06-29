@@ -11,101 +11,91 @@ Reviews tasks in `IN REVIEW` status. Evaluates the implementation against accept
 
 1. Read `AGENTS.md` → get list ID, pipeline doc IDs
 2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm current status names
-   (Taxonomy doc not needed by this skill — no task classification performed)
 3. Read the project's stack files (`package.json`, framework config, language version) to determine which best practices and security rules apply
+
+## Platform Setup
+
+Run once per session, cache `$KHA`:
+```bash
+_OS=$(uname -s 2>/dev/null || echo "Windows")
+case "$_OS" in
+  Darwin) [ "$(uname -m)" = "arm64" ] && KHA=~/.kha/kha-darwin-arm64 || KHA=~/.kha/kha-darwin-amd64 ;;
+  Linux)  KHA=~/.kha/kha-linux-amd64 ;;
+  *)      KHA="$APPDATA/kha/kha.exe" ;;
+esac
+```
 
 ## Steps
 
-1. Fetch tasks in `IN REVIEW` in column order using curl (MCP strips `orderindex`). Get list ID from `AGENTS.md`, API key from `.env.local`:
+1. Fetch the first IN REVIEW task (Feature Advancement Rule applied internally; timer starts automatically):
    ```bash
-   source .env.local && curl -s "https://api.clickup.com/api/v2/list/<LIST_ID>/task?statuses[]=in%20review&subtasks=true" -H "Authorization: $CLICKUP_API_KEY"
+   result=$($KHA next "in review" --list <LIST_ID>)
    ```
-   Build column order hierarchically: (1) separate top-level tasks (`parent` is null) from subtasks; (2) sort top-level tasks by `orderindex` ascending; (3) for each top-level task in order, insert its direct subtasks sorted by `orderindex` ascending immediately after it — this mirrors ClickUp's visual grouping where subtasks appear under their parent. Never reorder by age, priority, or any other field. Process tasks in this order.
-2. If response contains no tasks → report "No items in IN REVIEW" and stop.
-3. For each task:
-   - a. Present the task: "Found: **[title]** (ID: `[id]`). Review this task?" If declined → skip to next task.
-   - a2. Fetch full task details: `mcp__clickup__clickup_get_task` + `mcp__clickup__clickup_get_task_comments`. Assign current user (see **Assignment Routine**). Start time tracking (see **Time Tracking**).
-   - a3. **Type gate:** If task type is `feature` → apply **Feature Advancement Rule** (see below). Stop time tracking. Skip to next task.
-   - b. Extract from comment thread:
-     - Acceptance criteria from `[kha:scoping]` comment
-     - Architecture decisions from `[kha:design]` comment
-     - If neither comment exists → ask: "I couldn't find scoping or design comments on this task. Should I proceed without acceptance criteria, or should the task be re-scoped first?"
-   - c. Read the current git diff (run `git diff develop...HEAD`) focusing on files relevant to the task
-   - d. **Review Layer 1 — Acceptance criteria:** For each criterion in `[kha:scoping]`, evaluate whether the implementation satisfies it. Cite file and line for each finding. Mark ✅ or ❌.
-   - e. **Review Layer 2 — Best practices:** Check for: idiomatic patterns for the detected stack, code clarity and naming, dead code, unnecessary duplication, structural issues. Cite file and line.
-   - f. **Review Layer 3 — Security:** Check for OWASP Top 10 risks relevant to the stack:
-     - Injection (SQL, command, template)
-     - Broken authentication / session management
-     - Sensitive data exposure (secrets in code, unencrypted storage)
-     - Broken access control
-     - XSS (if frontend)
-     - Insecure deserialization
-     - Input validation gaps
-     - Stack-specific vulnerabilities (e.g. prototype pollution in JS, SSRF in server code)
-     Cite file and line for every issue.
-   - g. **Decision:**
-     - All criteria ✅ and no blocking best practice or security issue → move to `TESTING`. Stop time tracking (see **Time Tracking**). Add comment:
-       ```
-       [kha:review] result: approved
-       criteria: all met
-       notes: <non-blocking observations, or omit this line>
-       ```
-     - Any criterion ❌ or any blocking issue → stay in `IN REVIEW`. Stop time tracking (see **Time Tracking**). Add comment:
-       ```
-       [kha:review] result: changes requested
-       criteria:
-       - ✅ <criterion text>
-       - ❌ <criterion text> — <file>:<line> — <what is missing or wrong>
-       security:
-       - <file>:<line> — <vulnerability type> — <explanation and fix> (omit section if none)
-       practices:
-       - <file>:<line> — <issue> — <explanation and fix> (omit section if none)
-       ```
+   - If `task` is null → report "No items in IN REVIEW" and stop.
+   - Report any `advanced_features` from the JSON.
 
-## Feature Advancement Rule
+2. **Type gate**: if `task.task_type` is `feature` → the binary already handled advancement; this case means nothing was advanced. `$KHA cancel <task.id>` and stop.
 
-When a `type:feature` is encountered, do not review it as a regular task. Instead:
+3. **Selection loop:**
+   - Present: "Found: **[task.name]** (ID: `[task.id]`). Review this task?"
+   - **Confirmed** → assign user: `$KHA update <task.id> --assign`. Proceed to step 4.
+   - **Declined** → `$KHA cancel <task.id>`, fetch next:
+     ```bash
+     result=$($KHA next "in review" --list <LIST_ID> --skip <all,seen,ids>)
+     ```
+     Loop back to step 2.
 
-1. Check for a `[kha:design]` comment. If none → skip to next task (feature has no design, cannot advance).
-2. Extract child task IDs from the `child tasks:` line in `[kha:design]`.
-3. Fetch the current status of each child task via `mcp__clickup__clickup_get_task`.
-4. Find the **minimum child status** using pipeline order:
-   `TRIAGE < BACKLOG < SCOPING < IN DESIGN < READY FOR DEVELOPMENT < IN DEVELOPMENT < IN REVIEW < TESTING < SHIPPED`
-5. If minimum child status > parent's current status:
-   - Move parent to minimum child status via `mcp__clickup__clickup_update_task`.
-   - Add ClickUp comment: `[kha:auto] parent advanced to [status] — reflects minimum status among [N] children ([list of child IDs and their statuses]).`
-   - Report: "Feature **[title]** (`[id]`) advanced: [old status] → [new status]."
-   - Skip to next task.
-6. If minimum child status ≤ parent's current status:
-   - Skip to next task (feature cannot advance — children haven't passed the parent's current phase).
+4. All context is in the JSON:
+   - `kha_blocks.scoping` — acceptance criteria
+   - `kha_blocks.design` — architecture decisions
+   - If neither exists → ask: "I couldn't find scoping or design comments. Should I proceed without acceptance criteria, or re-scope first?"
 
-## Assignment Routine
+5. Read the current git diff:
+   ```bash
+   git diff develop...HEAD
+   ```
 
-When starting work on a task, ensure the current user is assigned:
-1. Call `mcp__clickup__clickup_get_workspace_members` and find the member with email `fernando.adriano@kheperi.com.br` — note their user ID. (Look up once per session and reuse.)
-2. Check the task's existing `assignees` from the fetched task details.
-3. If current user is **not** in the list: call `mcp__clickup__clickup_update_task` with `assignees` = all existing assignee IDs + current user ID.
-4. If already assigned: skip.
+6. **Review Layer 1 — Acceptance criteria:** For each criterion in `kha_blocks.scoping`, evaluate whether the implementation satisfies it. Cite file and line. Mark ✅ or ❌.
 
-## Time Tracking
+7. **Review Layer 2 — Best practices:** Check for idiomatic patterns, clarity, naming, dead code, unnecessary duplication. Cite file and line.
 
-**Start:** Call `mcp__clickup__clickup_start_time_tracking` with `task_id`. ClickUp automatically stops any previously active entry.
+8. **Review Layer 3 — Security:** Check for OWASP Top 10 risks relevant to the stack:
+   - Injection (SQL, command, template)
+   - Broken authentication / session management
+   - Sensitive data exposure (secrets in code, unencrypted storage)
+   - Broken access control
+   - XSS (if frontend)
+   - Insecure deserialization
+   - Input validation gaps
+   - Stack-specific vulnerabilities (prototype pollution in JS, SSRF in server code, etc.)
+   Cite file and line for every issue.
 
-**Stop:** Call `mcp__clickup__clickup_stop_time_tracking`.
+9. **Decision:**
+   - All criteria ✅ and no blocking issue:
+     ```bash
+     $KHA update <task.id> \
+       --status testing \
+       --comment "[kha:review]\nresult: approved\ncriteria: all met\nnotes: <non-blocking, or omit>" \
+       --stop-timer
+     ```
+   - Any criterion ❌ or blocking issue:
+     ```bash
+     $KHA update <task.id> \
+       --comment "[kha:review]\nresult: changes requested\ncriteria:\n- ✅ <criterion>\n- ❌ <criterion> — <file>:<line> — <what is wrong>\nsecurity:\n- <file>:<line> — <type> — <fix>\npractices:\n- <file>:<line> — <issue> — <fix>" \
+       --stop-timer
+     ```
+     Task stays in IN REVIEW.
 
 ## Finding Quality Rules
 
 - Every finding cites file and line — never say "somewhere in the code"
-- Every finding explains exactly what to change and why — no vague guidance
-- Non-blocking observations (style, minor improvements) go in `notes`, never in `criteria` or `security`
+- Every finding explains exactly what to change and why
+- Non-blocking observations go in `notes`, never in `criteria` or `security`
 - Security findings always include the risk and the concrete fix
-- A best-practice finding is **blocking** when it introduces maintenance risk (architectural mismatch, dead execution paths, or logic duplication that diverges from the same logic elsewhere). Style, naming, and cosmetic issues are never blocking — record them in `notes`.
+- A best-practice finding is **blocking** when it introduces maintenance risk (architectural mismatch, dead execution paths, diverging duplicate logic). Style and cosmetic issues are never blocking.
 
 ## Output
 
-Summary table after all tasks are processed:
-
 | Task | Result | Criteria Issues | Security Issues |
 |------|--------|-----------------|-----------------|
-| Password reset | approved | 0 | 0 |
-| Auth refactor | changes requested | 1 | 2 |
+| [title] | [approved / changes requested] | [N] | [N] |
