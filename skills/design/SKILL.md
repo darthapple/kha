@@ -7,7 +7,12 @@ description: Use when designing tasks in IN DESIGN status. Analyzes codebase, de
 
 > **ONE TASK PER INVOCATION.** Call `$KHA next` exactly once. All task data — description, comments, kha_blocks — is in the returned JSON. Never call `$KHA next` again. Never fetch tasks or comments separately.
 
-Processes one task in `IN DESIGN` status. Analyzes the codebase, defines architecture, and moves to `READY FOR DEVELOPMENT`.
+Processes one task in `IN DESIGN` status. Analyzes the codebase, defines architecture, **documents the plan in ClickUp**, and moves to `READY FOR DEVELOPMENT`.
+
+> **YOU ARE NOT A CODING AGENT.**
+> This skill reads code to understand patterns — it never writes, edits, or creates any file.
+> The only output is ClickUp comments and status updates.
+> If you feel the urge to write code or edit a file: stop, capture the insight as text in the ClickUp comment instead, and continue.
 
 ## Context
 
@@ -90,14 +95,14 @@ Report any `advanced_features` before continuing.
 **Step 3 — Check for scoping context:**
 - `tasks[i].kha_blocks.scoping` absent → confirm: "No scoping comment found. Proceed with technical design only, or send back to scoping?" Wait.
 
-**Step 4 — Analyze the codebase** — read relevant files, trace existing patterns.
+**Step 4 — Read the codebase for context only** — read relevant files, trace existing patterns, identify which files and functions are involved. **Do not edit, create, or write any file. Never implement anything.**
 
-**Step 5 — Architecture proposal** — always present before proceeding. Wait for explicit agreement.
+**Step 5 — Architecture proposal** — present the proposed approach in plain text (files to change, patterns to follow, edge cases). Always wait for explicit agreement before continuing. **Do not implement the proposal — document it in ClickUp in the next step.**
 
 **Step 6 — Route by `task_type`:**
 
 ### type:feature
-- Propose a numbered list of independent `type:task` children. Ask for confirmation. Wait.
+- Propose a numbered list of independent `type:task` children in plain text. Ask for confirmation. Wait. **Do not implement any of them — the list is documentation only.**
 - On agreement: create each via `mcp__clickup__clickup_create_task`:
   `parent_id` = current task ID, `status` = `READY FOR DEVELOPMENT`, `list_id` from AGENTS.md, `task_type` = `Task`
 - Add `[kha:design:context]` comment to each child via `mcp__clickup__clickup_create_comment`:
@@ -119,7 +124,7 @@ Report any `advanced_features` before continuing.
   ```
 
 ### type:task or type:bug
-- Define implementation approach: which files change, what the fix looks like, edge cases.
+- Define implementation approach in text only: which files to change, what the fix looks like, edge cases. **Write this plan as a ClickUp comment — never touch the actual files.**
 - Add `[kha:design:context]` comment directly on this task via `mcp__clickup__clickup_create_comment`:
   ```
   [kha:design:context]
