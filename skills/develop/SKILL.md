@@ -23,13 +23,7 @@ Never assume architecture or implementation scope. When ambiguous: state observa
 **Step 1 — Fetch all READY FOR DEVELOPMENT tasks (run this entire block as one bash command):**
 
 ```bash
-_OS=$(uname -s 2>/dev/null || echo "Windows")
-case "$_OS" in
-  Darwin) [ "$(uname -m)" = "arm64" ] && KHA="$HOME/.kha/kha-darwin-arm64" || KHA="$HOME/.kha/kha-darwin-amd64" ;;
-  Linux)  KHA="$HOME/.kha/kha-linux-amd64" ;;
-  *)      KHA="$APPDATA/kha/kha.exe" ;;
-esac
-[ -f .env.local ] && source .env.local
+KHA="$HOME/.kha/kha"; [ -f .env.local ] && source .env.local
 "$KHA" next "ready for development" --list <LIST_ID> --pipeline "<PIPELINE>"
 ```
 

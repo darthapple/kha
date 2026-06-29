@@ -20,13 +20,7 @@ Reviews one task in `IN REVIEW` status against acceptance criteria, best practic
 **Step 1 — Fetch all IN REVIEW tasks (run this entire block as one bash command):**
 
 ```bash
-_OS=$(uname -s 2>/dev/null || echo "Windows")
-case "$_OS" in
-  Darwin) [ "$(uname -m)" = "arm64" ] && KHA="$HOME/.kha/kha-darwin-arm64" || KHA="$HOME/.kha/kha-darwin-amd64" ;;
-  Linux)  KHA="$HOME/.kha/kha-linux-amd64" ;;
-  *)      KHA="$APPDATA/kha/kha.exe" ;;
-esac
-[ -f .env.local ] && source .env.local
+KHA="$HOME/.kha/kha"; [ -f .env.local ] && source .env.local
 "$KHA" next "in review" --list <LIST_ID> --pipeline "<PIPELINE>"
 ```
 
