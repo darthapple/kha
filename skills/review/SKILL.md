@@ -1,23 +1,24 @@
 ---
 name: kha:review
-description: Use when reviewing tasks in IN REVIEW status. Reviews implementation against acceptance criteria, stack best practices, and security. Moves to TESTING on pass, stays IN REVIEW with findings on fail.
+description: Use when reviewing tasks in IN REVIEW status. Reviews against acceptance criteria, best practices, and security. Moves to TESTING on pass. Processes ONE task per invocation.
 ---
 
 # kha: Review
 
-> **ONE TASK PER INVOCATION.** Fetch all IN REVIEW tasks once, iterate locally, process one. Do not call `$KHA next` more than once.
+> **ONE TASK PER INVOCATION.** Call `$KHA next` exactly once. All task data — description, comments, kha_blocks — is in the returned JSON. Never call `$KHA next` again. Never fetch tasks or comments separately.
 
-Reviews tasks in `IN REVIEW` status. Evaluates the implementation against acceptance criteria from scoping, architecture decisions from design, stack best practices, and security. Moves to `TESTING` on pass or stays in `IN REVIEW` with specific, actionable findings on fail.
+Reviews one task in `IN REVIEW` status against acceptance criteria, best practices, and security. Moves to `TESTING` on pass.
 
 ## Context
 
-1. Read `AGENTS.md` → get list ID, pipeline doc IDs
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm current status names
-3. Read the project's stack files (`package.json`, framework config, language version) to determine which best practices and security rules apply
+1. Read `AGENTS.md` → find `list_id`
+2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → get exact status names in order
+3. Read the project's stack files (`package.json`, framework config) to know which security rules apply
 
-## Platform Setup
+## Steps
 
-Run once per session, cache `$KHA` and `$PIPELINE`:
+**Step 1 — Fetch all IN REVIEW tasks (run this entire block as one bash command):**
+
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
@@ -26,83 +27,101 @@ case "$_OS" in
   *)      KHA="$APPDATA/kha/kha.exe" ;;
 esac
 [ -f .env.local ] && source .env.local
+"$KHA" next "in review" --list <LIST_ID> --pipeline "<PIPELINE>"
 ```
 
-After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
+**The response JSON has this exact shape:**
+```json
+{
+  "tasks": [
+    {
+      "id": "86e22abc",
+      "name": "Task title",
+      "status": "in review",
+      "task_type": "task",
+      "description": "...",
+      "url": "https://app.clickup.com/t/86e22abc",
+      "assignees": [{ "id": 123, "email": "user@example.com" }],
+      "comments": [...],
+      "kha_blocks": {
+        "scoping": { "acceptance_criteria": ["..."] },
+        "design": { "architecture": "..." },
+        "design:context": { "scope": "...", "acceptance_criteria": ["..."] },
+        "develop": { "branch": "task/...", "criteria_implemented": ["..."] }
+      }
+    }
+  ],
+  "current_user": { "id": 123, "email": "user@example.com" },
+  "advanced_features": [],
+  "message": "(only present when tasks array is empty)"
+}
+```
+
+If `tasks` is empty → report `message` + any `advanced_features` and stop.
+
+---
+
+**From this point, work entirely from the JSON above. Do NOT call `$KHA next` again.**
+
+- Iterate `tasks` by index in your reasoning. No CLI calls on decline.
+- `tasks[i].kha_blocks.scoping` and `tasks[i].kha_blocks["design:context"]` have acceptance criteria.
+- `tasks[i].kha_blocks.design` has architecture decisions.
+
+---
+
+**Step 2 — Selection loop:**
+
+- Start at `tasks[0]`. Present: "Found: **[name]**. Review this task?"
+- **Declined** → move to `tasks[1]`, etc. No CLI call.
+- **All exhausted** → report "No tasks remaining in IN REVIEW" and stop.
+- **Confirmed** → assign and start timer:
+  ```bash
+  "$KHA" update <task.id> --start-timer --assign
+  ```
+
+**Step 3 — Check context:**
+- No scoping or design blocks → ask: "No acceptance criteria found. Proceed without them, or re-scope first?" Wait.
+
+**Step 4 — Read the git diff:**
 ```bash
-PIPELINE="triage,backlog,scoping,in design,ready for development,in development,in review,testing,shipped"
+git diff develop...HEAD
 ```
 
-## Steps
+**Step 5 — Review Layer 1: Acceptance criteria** — for each criterion in `kha_blocks.scoping` or `kha_blocks["design:context"]`. Cite file and line. Mark ✅ or ❌.
 
-> **Call `$KHA next` exactly once.** It returns all tasks in IN REVIEW. Iterate `result.tasks` locally — never call `$KHA next` again during this session.
+**Step 6 — Review Layer 2: Best practices** — idiomatic patterns, clarity, naming, dead code, duplication. Cite file and line.
 
-1. Fetch all IN REVIEW tasks:
-   ```bash
-   result=$($KHA next "in review" --list <LIST_ID> --pipeline "$PIPELINE")
-   ```
-   - If `result.tasks` is empty → report "No items in IN REVIEW" and stop.
-   - Report any `result.advanced_features`.
+**Step 7 — Review Layer 3: Security** — OWASP Top 10 relevant to the stack:
+- Injection (SQL, command, template)
+- Broken auth / session management
+- Sensitive data exposure
+- Broken access control
+- XSS (frontend), insecure deserialization, input validation gaps
+- Stack-specific (prototype pollution in JS, SSRF in server code)
 
-2. **Selection loop** — iterate `result.tasks` from index 0:
-   - If all tasks exhausted → report "No tasks remaining in IN REVIEW" and stop.
-   - Present: "Found: **[task.name]** (ID: `[task.id]`). Review this task?"
-   - **Declined** → advance to next in the array. Loop.
-   - **Confirmed** → assign user and start timer:
-     ```bash
-     $KHA update <task.id> --start-timer --assign
-     ```
-     Proceed to step 3.
+**Step 8 — Decision:**
 
-3. All context is already in the task object:
-   - `task.kha_blocks.scoping` — acceptance criteria
-   - `task.kha_blocks.design` — architecture decisions
-   - `task.kha_blocks["design:context"]` — per-task scope and criteria
-   - If neither scoping nor design blocks exist → ask: "I couldn't find scoping or design comments. Should I proceed without acceptance criteria, or re-scope first?"
+All criteria ✅ and no blocking issue:
+```bash
+"$KHA" update <task.id> \
+  --status testing \
+  --comment "[kha:review]\nresult: approved\ncriteria: all met\nnotes: <non-blocking or omit>" \
+  --stop-timer
+```
 
-4. Read the current git diff:
-   ```bash
-   git diff develop...HEAD
-   ```
-
-5. **Review Layer 1 — Acceptance criteria:** For each criterion in `kha_blocks.scoping` or `kha_blocks["design:context"]`, evaluate whether the implementation satisfies it. Cite file and line. Mark ✅ or ❌.
-
-6. **Review Layer 2 — Best practices:** Check for idiomatic patterns, clarity, naming, dead code, unnecessary duplication. Cite file and line.
-
-7. **Review Layer 3 — Security:** Check for OWASP Top 10 risks relevant to the stack:
-   - Injection (SQL, command, template)
-   - Broken authentication / session management
-   - Sensitive data exposure (secrets in code, unencrypted storage)
-   - Broken access control
-   - XSS (if frontend)
-   - Insecure deserialization
-   - Input validation gaps
-   - Stack-specific vulnerabilities (prototype pollution in JS, SSRF in server code, etc.)
-   Cite file and line for every issue.
-
-8. **Decision:**
-   - All criteria ✅ and no blocking issue:
-     ```bash
-     $KHA update <task.id> \
-       --status testing \
-       --comment "[kha:review]\nresult: approved\ncriteria: all met\nnotes: <non-blocking, or omit>" \
-       --stop-timer
-     ```
-   - Any criterion ❌ or blocking issue:
-     ```bash
-     $KHA update <task.id> \
-       --comment "[kha:review]\nresult: changes requested\ncriteria:\n- ✅ <criterion>\n- ❌ <criterion> — <file>:<line> — <what is wrong>\nsecurity:\n- <file>:<line> — <type> — <fix>\npractices:\n- <file>:<line> — <issue> — <fix>" \
-       --stop-timer
-     ```
-     Task stays in IN REVIEW.
+Any ❌ or blocking issue:
+```bash
+"$KHA" update <task.id> \
+  --comment "[kha:review]\nresult: changes requested\ncriteria:\n- ✅ <criterion>\n- ❌ <criterion> — <file>:<line> — <what is wrong>\nsecurity:\n- <file>:<line> — <type> — <fix>" \
+  --stop-timer
+```
+Task stays in IN REVIEW.
 
 ## Finding Quality Rules
 
-- Every finding cites file and line — never say "somewhere in the code"
+- Every finding cites file and line
 - Every finding explains exactly what to change and why
-- Non-blocking observations go in `notes`, never in `criteria` or `security`
-- Security findings always include the risk and the concrete fix
-- A best-practice finding is **blocking** when it introduces maintenance risk (architectural mismatch, dead execution paths, diverging duplicate logic). Style and cosmetic issues are never blocking.
+- A best-practice finding is **blocking** only when it introduces maintenance risk (architectural mismatch, dead execution paths, diverging logic). Style is never blocking.
 
 ## Output
 

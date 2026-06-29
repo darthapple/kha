@@ -1,33 +1,32 @@
 ---
 name: kha:qa
-description: Use when testing tasks in TESTING status. Writes and runs automated tests (unit, integration, Playwright e2e), handles manual fallback, and moves to SHIPPED on full pass. Processes ONE task per invocation.
+description: Use when testing tasks in TESTING status. Writes and runs automated tests, handles manual fallback, and moves to SHIPPED. Processes ONE task per invocation.
 ---
 
 # kha: QA
 
-> **ONE TASK PER INVOCATION.** Fetch all TESTING tasks once, iterate locally, process one. Do not call `$KHA next` more than once.
+> **ONE TASK PER INVOCATION.** Call `$KHA next` exactly once. All task data — description, comments, kha_blocks — is in the returned JSON. Never call `$KHA next` again. Never fetch tasks or comments separately.
 
-Processes one task in `TESTING` status. Writes and runs automated tests tied to acceptance criteria. For criteria that genuinely cannot be automated (confirmed with human), creates a manual checklist and moves to `MANUAL TESTING`. Moves to `SHIPPED` on full automated pass.
+Processes one task in `TESTING` status. Writes and runs automated tests tied to acceptance criteria. Moves to `SHIPPED` on full pass.
 
 ## Context
 
-1. Read `AGENTS.md` → get list ID, pipeline doc IDs
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names; check if `MANUAL TESTING` status exists
-3. Read the project's test setup: test runner, test directory structure, existing test files, Playwright config (if any)
+1. Read `AGENTS.md` → find `list_id`
+2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names; check if `MANUAL TESTING` exists
+3. Read test setup: runner, directory structure, existing test files, Playwright config
 
 ## MANUAL TESTING Status
 
-If `MANUAL TESTING` status does not exist in the ClickUp list, create it once using `mcp__clickup__clickup_update_list` before moving any task there. Use orderindex after `TESTING`, color `#f4c430`. Reuse — do not recreate.
+If `MANUAL TESTING` does not exist in the list, create it once via `mcp__clickup__clickup_update_list` (orderindex after TESTING, color `#f4c430`). Reuse — do not recreate.
 
 ## No Silent Assumptions
 
-Never classify a criterion as "not automatable" without:
-1. Explaining exactly why it cannot be automated
-2. Getting explicit human confirmation
+Never classify a criterion as "not automatable" without explaining why and getting explicit human confirmation.
 
-## Platform Setup
+## Steps
 
-Run once per session, cache `$KHA` and `$PIPELINE`:
+**Step 1 — Fetch all TESTING tasks (run this entire block as one bash command):**
+
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
@@ -36,111 +35,119 @@ case "$_OS" in
   *)      KHA="$APPDATA/kha/kha.exe" ;;
 esac
 [ -f .env.local ] && source .env.local
+"$KHA" next testing --list <LIST_ID> --pipeline "<PIPELINE>"
 ```
 
-After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
+**The response JSON has this exact shape:**
+```json
+{
+  "tasks": [
+    {
+      "id": "86e22abc",
+      "name": "Task title",
+      "status": "testing",
+      "task_type": "task",
+      "description": "...",
+      "url": "https://app.clickup.com/t/86e22abc",
+      "assignees": [{ "id": 123, "email": "user@example.com" }],
+      "comments": [...],
+      "kha_blocks": {
+        "scoping": { "acceptance_criteria": ["..."] },
+        "design:context": { "scope": "...", "acceptance_criteria": ["..."] },
+        "design": { "architecture": "..." },
+        "review": { "result": "approved" }
+      }
+    }
+  ],
+  "current_user": { "id": 123, "email": "user@example.com" },
+  "advanced_features": [],
+  "message": "(only present when tasks array is empty)"
+}
+```
+
+If `tasks` is empty → report `message` + any `advanced_features` and stop.
+
+---
+
+**From this point, work entirely from the JSON above. Do NOT call `$KHA next` again.**
+
+- Iterate `tasks` by index in your reasoning. No CLI calls on decline.
+- For `type:task`: use criteria from `tasks[i].kha_blocks["design:context"]` or `.scoping`
+- For `type:feature`: use criteria from `tasks[i].kha_blocks.scoping`
+
+---
+
+**Step 2 — Selection loop:**
+
+- Start at `tasks[0]`. Present: "Found: **[name]**. Process this task?"
+- **Declined** → move to `tasks[1]`, etc. No CLI call.
+- **All exhausted** → report "No tasks remaining in TESTING" and stop.
+- **Confirmed** → assign and start timer:
+  ```bash
+  "$KHA" update <task.id> --start-timer --assign
+  ```
+
+**Step 3 — Assess automability per criterion:**
+- `type:task` → unit/integration tests
+- `type:feature` → Playwright e2e tests
+- Unclear → confirm with human: "I can't reliably automate `<criterion>` because `<reason>`. Do you agree this needs manual testing?" Wait for explicit agreement.
+
+**Step 4 — Write automated tests** (before running):
+- One test per criterion; names describe behavior: `test('resets password when valid token provided')`
+- Unit: one function/method, mock all external dependencies
+- Integration: test module boundaries, mock only external services
+- Playwright: `page.getByRole`, `page.getByLabel`, `page.getByText` — never CSS class or ID selectors
+- Each test has exactly one assertion focus
+
+**Step 5 — Ask before committing:**
+"I've written `<N>` tests covering `<criteria>`. Commit them?" Wait for confirmation.
+
+**Step 6 — Commit:**
 ```bash
-PIPELINE="triage,backlog,scoping,in design,ready for development,in development,in review,testing,shipped"
+git add <test files>
+git commit -m "test(<task.id>): add automated tests for <task title>"
 ```
 
-## Steps
+**Step 7 — Run all tests** and report pass/fail per test mapped to its criterion.
 
-> **Call `$KHA next` exactly once.** It returns all tasks in TESTING. Iterate `result.tasks` locally — never call `$KHA next` again during this session.
+**Step 8 — Decision** (fail overrides manual):
 
-1. Fetch all TESTING tasks:
-   ```bash
-   result=$($KHA next testing --list <LIST_ID> --pipeline "$PIPELINE")
-   ```
-   - If `result.tasks` is empty → report "No items in TESTING" and stop.
-   - Report any `result.advanced_features`.
+All passing → merge and ship:
+```bash
+git checkout develop && git pull origin develop
+git merge --no-ff task/<task.id>-<kebab-title> -m "Merge task/<task.id>-<kebab-title> into develop"
+git push origin develop
+git branch -d task/<task.id>-<kebab-title>
+gh pr create --base main --head develop --title "Release: <task title>" --body "Merges develop into main shipping task <task.id>: <task title>."
+```
+If a `develop → main` PR is already open, skip creation and add the URL to the comment instead.
+```bash
+"$KHA" update <task.id> \
+  --status shipped \
+  --comment "[kha:qa]\nresult: passed\nautomated: <N> tests\ncoverage:\n- <criterion> → <test name>\npr: <PR URL>" \
+  --stop-timer
+```
 
-2. **Selection loop** — iterate `result.tasks` from index 0:
-   - If all tasks exhausted → report "No tasks remaining in TESTING" and stop.
-   - Present: "Found: **[task.name]** (ID: `[task.id]`). Process this task?"
-   - **Declined** → advance to next in the array. Loop.
-   - **Confirmed** → assign user and start timer:
-     ```bash
-     $KHA update <task.id> --start-timer --assign
-     ```
-     Proceed to step 3.
+Manual testing required (automated pass, some criteria confirmed manual):
+```bash
+"$KHA" update <task.id> \
+  --status "manual testing" \
+  --comment "[kha:qa]\nresult: manual required\nautomated: <N> tests\nmanual checklist:\n- [ ] <step: what to do and verify>" \
+  --stop-timer
+```
 
-3. Extract from the task object:
-   - For `type:task`: implementation-scope criteria from `task.kha_blocks["design:context"]` or `task.kha_blocks.scoping`
-   - For `type:feature`: user-facing criteria from `task.kha_blocks.scoping`
-   - Architecture context from `task.kha_blocks.design`
-   - Review summary from `task.kha_blocks.review`
-
-4. **Assess automability per criterion:**
-   - `type:task` criteria → unit tests or integration tests
-   - `type:feature` criteria → Playwright e2e tests
-   - Unclear → confirm with human: "I couldn't find a reliable way to automate `<criterion>` — here's why: `<reason>`. Do you agree this needs manual testing?" Wait for explicit agreement.
-
-5. **Write automated tests** (before running):
-   - One test per criterion — names describe behavior: `test('resets password when valid token provided')`
-   - Unit tests: one function/method, mock all external dependencies
-   - Integration tests: test module boundaries, mock only external services
-   - Playwright e2e: `page.getByRole`, `page.getByLabel`, `page.getByText` — never CSS class or ID selectors
-   - Each test has exactly one assertion focus
-
-6. **Ask before committing:** "I've written `<N>` tests covering `<criteria list>`. Here's a summary: `<test names>`. Should I commit them?" Wait for confirmation.
-
-7. Commit test files:
-   ```bash
-   git add <test files>
-   git commit -m "test(<task.id>): add automated tests for <task title>"
-   ```
-
-8. **Run all automated tests** and report pass/fail per test mapped to its criterion.
-
-9. **Decision:**
-
-   **Rule: fail overrides manual.** Any failing automated test keeps task in TESTING regardless of manual criteria.
-
-   - **All passing** → merge and ship:
-     ```bash
-     git checkout develop && git pull origin develop
-     git merge --no-ff task/<task.id>-<kebab-title> -m "Merge task/<task.id>-<kebab-title> into develop"
-     git push origin develop
-     git branch -d task/<task.id>-<kebab-title>
-     gh pr create --base main --head develop --title "Release: <task title>" --body "Merges develop into main shipping task <task.id>: <task title>."
-     ```
-     If a `develop → main` PR is already open, skip creation and add the PR URL to the comment.
-     ```bash
-     $KHA update <task.id> \
-       --status shipped \
-       --comment "[kha:qa]\nresult: passed\nautomated: <N> tests, all passing\ncoverage:\n- <criterion> → <test name>\npr: <PR URL>" \
-       --stop-timer
-     ```
-
-   - **Manual testing required** (all automated pass, some criteria confirmed as manual):
-     ```bash
-     $KHA update <task.id> \
-       --status "manual testing" \
-       --comment "[kha:qa]\nresult: manual required\nautomated: <N> tests, all passing\nmanual checklist:\n- [ ] <specific step: what to do and what to verify>" \
-       --stop-timer
-     ```
-
-   - **Automated tests fail:**
-     ```bash
-     $KHA update <task.id> \
-       --comment "[kha:qa]\nresult: failed\nfailing tests:\n- <test name> — covers: <criterion> — error: <error>" \
-       --stop-timer
-     ```
-     Task stays in TESTING.
-
-## Test Writing Guidelines
-
-- Unit tests: one function/method per test, mock all external dependencies
-- Integration tests: test module boundaries, mock only external services (DB, APIs, file system)
-- Playwright e2e: `page.getByRole()`, `page.getByLabel()`, `page.getByText()` — never CSS class or ID selectors
-- Test names use plain English: `test('shows error when email not found')`
-- Each test checks one thing — split tests that assert on multiple independent behaviors
+Automated tests fail:
+```bash
+"$KHA" update <task.id> \
+  --comment "[kha:qa]\nresult: failed\nfailing tests:\n- <test name> — covers: <criterion> — error: <error>" \
+  --stop-timer
+```
 
 ## Output
 
 | Field | Value |
 |-------|-------|
 | Task | [title] ([id]) |
-| Automated Tests | [N] tests |
+| Automated Tests | [N] |
 | Manual | [yes / no] |
 | Result | → [SHIPPED / MANUAL TESTING / stays TESTING] |

@@ -1,29 +1,27 @@
 ---
 name: kha:develop
-description: Use when developing tasks in READY FOR DEVELOPMENT status. Iterates the ordered list, presents the first valid type:task or type:bug to the user, creates a branch, implements using TDD with small commits, and moves to IN REVIEW. Processes ONE task per invocation.
+description: Use when developing tasks in READY FOR DEVELOPMENT status. Creates a branch, implements using TDD with small commits, and moves to IN REVIEW. Processes ONE task per invocation.
 ---
 
 # kha: Develop
 
-> **ONE TASK PER INVOCATION.** Fetch all READY FOR DEVELOPMENT tasks once, iterate locally, process one. Do not call `$KHA next` more than once.
+> **ONE TASK PER INVOCATION.** Call `$KHA next` exactly once. All task data — description, comments, kha_blocks — is in the returned JSON. Never call `$KHA next` again. Never fetch tasks or comments separately.
 
-Finds the first actionable `type:task` or `type:bug` in `READY FOR DEVELOPMENT`, implements it using TDD with small commits on a dedicated branch, and moves to `IN REVIEW`.
+Finds one `type:task` or `type:bug` in `READY FOR DEVELOPMENT`, implements it on a dedicated branch using TDD, and moves to `IN REVIEW`.
 
 ## Context
 
-1. Read `AGENTS.md` → get list ID, pipeline doc ID
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names
+1. Read `AGENTS.md` → find `list_id`
+2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → get exact status names in order
 
 ## No Silent Assumptions
 
-Never assume architecture, file structure, or implementation scope. When anything is ambiguous:
-1. State what you observed and why it is uncertain
-2. Present your suggestion with reasoning
-3. Wait for explicit agreement before acting
+Never assume architecture or implementation scope. When ambiguous: state observation, present suggestion, wait for explicit agreement.
 
-## Platform Setup
+## Steps
 
-Run once per session, cache `$KHA` and `$PIPELINE`:
+**Step 1 — Fetch all READY FOR DEVELOPMENT tasks (run this entire block as one bash command):**
+
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
@@ -32,72 +30,94 @@ case "$_OS" in
   *)      KHA="$APPDATA/kha/kha.exe" ;;
 esac
 [ -f .env.local ] && source .env.local
+"$KHA" next "ready for development" --list <LIST_ID> --pipeline "<PIPELINE>"
 ```
 
-After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
+**The response JSON has this exact shape:**
+```json
+{
+  "tasks": [
+    {
+      "id": "86e22abc",
+      "name": "Task title",
+      "status": "ready for development",
+      "task_type": "task",
+      "description": "...",
+      "url": "https://app.clickup.com/t/86e22abc",
+      "assignees": [{ "id": 123, "email": "user@example.com" }],
+      "comments": [...],
+      "kha_blocks": {
+        "scoping": { "acceptance_criteria": ["..."] },
+        "design:context": {
+          "architecture": "...",
+          "scope": "...",
+          "acceptance_criteria": ["..."],
+          "file_hints": "..."
+        }
+      }
+    }
+  ],
+  "current_user": { "id": 123, "email": "user@example.com" },
+  "advanced_features": [],
+  "message": "(only present when tasks array is empty)"
+}
+```
+
+If `tasks` is empty → report `message` + any `advanced_features` and stop.
+
+---
+
+**From this point, work entirely from the JSON above. Do NOT call `$KHA next` again.**
+
+- Iterate `tasks` by index in your reasoning. No CLI calls on decline.
+- `tasks[i].kha_blocks["design:context"]` has architecture, scope, criteria, and file hints.
+- `tasks[i].kha_blocks.scoping` has user-facing criteria as fallback.
+
+---
+
+**Step 2 — Selection loop:**
+
+- Start at `tasks[0]`. Check `task_type`:
+  - **`epic`** → say "Epic — run kha:scoping first." Skip to next.
+  - **`feature`** → say "Feature — run kha:design first." Skip to next.
+  - **`task` or `bug`** → present: "**[name]** (`[task_type]`) — [scope from `kha_blocks["design:context"].scope` if present]. Work on this?"
+- **Declined** → move to `tasks[1]`, etc. No CLI call.
+- **All exhausted** → report "No actionable tasks remaining" and stop.
+- **Confirmed** → assign and start timer:
+  ```bash
+  "$KHA" update <task.id> --start-timer --assign
+  ```
+
+**Step 3 — Check context:**
+
+Use `tasks[i].kha_blocks["design:context"]` for criteria and file hints. Fall back to `tasks[i].kha_blocks.scoping`. If neither exists → ask: "No design or scoping context found. Proceed without it, or send back to design first?" Wait.
+
+**Step 4 — Move to IN DEVELOPMENT:**
 ```bash
-PIPELINE="triage,backlog,scoping,in design,ready for development,in development,in review,testing,shipped"
+"$KHA" update <task.id> --status "in development"
 ```
 
-## Steps
+**Step 5 — Create branch:**
+```bash
+git checkout develop && git pull origin develop
+git checkout -b task/<task.id>-<kebab-title>
+```
 
-> **Call `$KHA next` exactly once.** It returns all tasks in READY FOR DEVELOPMENT. Iterate `result.tasks` locally — never call `$KHA next` again during this session.
+**Step 6 — TDD loop** — for each acceptance criterion:
+- **Red** → write failing test, run it, confirm it fails for the right reason. Commit: `test(<task.id>): <what it tests>`
+- **Green** → implement minimum code to pass. Follow `file_hints`. Run all tests. Commit: `feat(<task.id>): <what was implemented>` (or `fix(...)` for bugs)
+- If a structural decision arises → state it and ask for confirmation before proceeding.
+- If a test cannot be made green → report the blocker. Leave in IN DEVELOPMENT. Stop.
 
-1. Fetch all READY FOR DEVELOPMENT tasks:
-   ```bash
-   result=$($KHA next "ready for development" --list <LIST_ID> --pipeline "$PIPELINE")
-   ```
-   - If `result.tasks` is empty → report "No items in READY FOR DEVELOPMENT" and stop.
-   - Report any `result.advanced_features`.
+**Step 7 — Refactor pass** (optional). Run all tests again. Commit: `refactor(<task.id>): <what was cleaned>`
 
-2. **Selection loop** — iterate `result.tasks` from index 0:
-   - If all tasks exhausted → report "No actionable tasks remaining" and stop.
-   - Check `task.task_type`:
-     - **`epic`** → say "This is an epic — run `kha:scoping` first." Skip to next in array.
-     - **`feature`** → say "This is a feature — run `kha:design` first." Skip to next in array.
-     - **`task` or `bug`** → present: "[task.name] (`[task.task_type]`) — [one-line summary from `task.kha_blocks["design:context"].scope` if present]. Work on this?"
-   - **Declined** → advance to next in the array. Loop.
-   - **Confirmed** → assign user and start timer:
-     ```bash
-     $KHA update <task.id> --start-timer --assign
-     ```
-     Proceed to step 3.
-
-3. Extract from the task object:
-   - Acceptance criteria from `task.kha_blocks["design:context"].acceptance_criteria` or `task.kha_blocks.scoping.acceptance_criteria`
-   - Architecture context from `task.kha_blocks["design:context"].architecture` and `.file_hints`
-   - If neither exists → ask: "I couldn't find scoping or design comments on this task. Should I proceed without them, or should it go back to design first?" Wait before proceeding.
-
-4. Move task to IN DEVELOPMENT (timer already running from step 2):
-   ```bash
-   $KHA update <task.id> --status "in development"
-   ```
-
-5. Create branch from `develop`:
-   ```bash
-   git checkout develop && git pull origin develop
-   git checkout -b task/<task.id>-<kebab-title>
-   ```
-
-6. **TDD loop** — for each acceptance criterion, in order:
-   - a. **Red** — write a failing test. Run it to confirm it fails for the right reason.
-   - b. Commit: `test(<task.id>): <what it tests>`
-   - c. **Green** — implement minimum code to pass. Follow `file_hints` and existing patterns.
-   - d. Run all tests to confirm new test passes and nothing regresses.
-   - e. Commit: `feat(<task.id>): <what was implemented>` (use `fix(...)` for bugs)
-   - f. If a structural decision arose not covered by design context → state it and ask for confirmation before proceeding.
-   - g. If a test cannot be made green → report blocker with failing test name and error. Leave task in IN DEVELOPMENT. Stop. Do not move to IN REVIEW with failing tests.
-
-7. **Refactor pass** (optional) — clean up duplication or clarity issues. Run all tests again.
-   Commit: `refactor(<task.id>): <what was cleaned up>`
-
-8. Finalize:
-   ```bash
-   $KHA update <task.id> \
-     --status "in review" \
-     --comment "[kha:develop]\nbranch: task/<task.id>-<kebab-title>\ncriteria implemented:\n- <criterion> → <test name>\nnotes: <decisions, or omit>" \
-     --stop-timer
-   ```
+**Step 8 — Finalize:**
+```bash
+"$KHA" update <task.id> \
+  --status "in review" \
+  --comment "[kha:develop]\nbranch: task/<task.id>-<kebab-title>\ncriteria implemented:\n- <criterion> → <test name>" \
+  --stop-timer
+```
 
 ## Output
 

@@ -5,28 +5,29 @@ description: Use when triaging tasks in TRIAGE status. Classifies each by type u
 
 # kha: Triage
 
-> **ONE TASK PER INVOCATION.** Fetch all TRIAGE tasks once, iterate locally, process one. Do not call `$KHA next` more than once.
+> **ONE TASK PER INVOCATION.** Call `$KHA next` exactly once. All task data — description, comments, kha_blocks — is in the returned JSON. Never call `$KHA next` again. Never fetch tasks or comments separately.
 
-Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickUp Task Type field) and moves to `BACKLOG`.
-
-## Context
-
-1. Read `AGENTS.md` in the current project to find the list ID
-2. Read the Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) for current status names
-3. Read the Taxonomy doc (`_Config` space, doc ID: `2kza2py5-537`) for full type definitions
+Processes one task in `TRIAGE` status. Classifies it by type and moves to `BACKLOG`.
 
 ## Classification Rules
 
 | Native Task Type | When to use |
 |-----------------|-------------|
 | `Bug` | Something broken that should work. Requires reproduction steps. |
-| `Feature` | New user-facing functionality that doesn't exist yet. Gets broken into Tasks by kha:design. |
-| `Epic` | Large initiative grouping multiple Features. Gets broken into Features by kha:scoping. |
-| `Task` | Everything else — docs, refactors, research, standalone implementation work. |
+| `Feature` | New user-facing functionality that doesn't exist yet. |
+| `Epic` | Large initiative grouping multiple Features. |
+| `Task` | Everything else — docs, refactors, research, standalone work. |
 
-## Platform Setup
+## Context
 
-Run once per session, cache `$KHA` and `$PIPELINE`:
+1. Read `AGENTS.md` → find `list_id`
+2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → get exact status names in order
+3. Read Taxonomy doc (`_Config` space, doc ID: `2kza2py5-537`) → type definitions
+
+## Steps
+
+**Step 1 — Fetch all TRIAGE tasks (run this entire block as one bash command):**
+
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
@@ -35,54 +36,73 @@ case "$_OS" in
   *)      KHA="$APPDATA/kha/kha.exe" ;;
 esac
 [ -f .env.local ] && source .env.local
+"$KHA" next triage --list <LIST_ID> --pipeline "<STATUS_1>,<STATUS_2>,..."
 ```
 
-After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
+Replace `<LIST_ID>` with the value from `AGENTS.md`. Replace the pipeline with the exact ordered status names from the Pipeline doc (comma-separated, lowercased).
+
+**The response JSON has this exact shape:**
+```json
+{
+  "tasks": [
+    {
+      "id": "86e22abc",
+      "name": "Task title",
+      "status": "triage",
+      "task_type": "bug",
+      "description": "Full description text",
+      "url": "https://app.clickup.com/t/86e22abc",
+      "assignees": [{ "id": 123, "email": "user@example.com" }],
+      "comments": [
+        { "id": "c1", "text": "Comment text", "date": "1234567890", "user": { "id": 123 } }
+      ],
+      "kha_blocks": {
+        "triage": { "type": "Bug", "reasoning": "..." },
+        "scoping": { "routed": "business" }
+      }
+    }
+  ],
+  "current_user": { "id": 123, "email": "user@example.com" },
+  "advanced_features": [],
+  "message": "(only present when tasks array is empty)"
+}
+```
+
+If `tasks` is empty → report `message` and stop.
+
+---
+
+**From this point, work entirely from the JSON above. Do NOT call `$KHA next` again.**
+
+- `tasks` is an ordered array. Work through it index by index in your reasoning.
+- `tasks[i].comments` already contains every comment — never fetch comments separately.
+- `tasks[i].kha_blocks` has pre-parsed `[kha:*]` blocks — never parse comments manually.
+- `current_user.id` is your user ID (needed for `--assign`).
+
+---
+
+**Step 2 — Selection loop** (iterate `tasks` array by index, no CLI calls):
+
+- Start at `tasks[0]`. Present: "Found: **[name]** (`[task_type]`). Triage this task?"
+- **Declined** → move to `tasks[1]`, `tasks[2]`, etc. No CLI call needed.
+- **All exhausted** → report "No tasks remaining in TRIAGE" and stop.
+- **Confirmed** → start timer and assign:
+  ```bash
+  "$KHA" update <task.id> --start-timer --assign
+  ```
+  Proceed to Step 3.
+
+**Step 3 — Classify** using `tasks[i].description`, `tasks[i].comments`, `tasks[i].kha_blocks`:
+- If classification is ambiguous → ask one focused question. Wait for answer.
+- If `Bug` and no reproduction steps in description or comments → ask user for them. Wait.
+
+**Step 4 — Write result:**
 ```bash
-PIPELINE="triage,backlog,scoping,in design,ready for development,in development,in review,testing,shipped"
+"$KHA" update <task.id> \
+  --status backlog \
+  --comment "[kha:triage]\ntype: <Type>\nreasoning: <one-line reasoning>" \
+  --stop-timer
 ```
-
-## Steps
-
-> **Call `$KHA next` exactly once.** It returns all tasks in the status. Iterate `result.tasks` locally — never call `$KHA next` again during this session.
-
-1. Fetch all TRIAGE tasks:
-   ```bash
-   result=$($KHA next triage --list <LIST_ID> --pipeline "$PIPELINE")
-   ```
-   Parse `result` as JSON. If `result.tasks` is empty → report `result.message` and stop.
-   Report any `result.advanced_features`.
-
-2. **Selection loop** — iterate `result.tasks` from index 0:
-   - If all tasks exhausted → report "No tasks remaining in TRIAGE" and stop.
-   - Present: "Found: **[task.name]** (ID: `[task.id]`). Triage this task?"
-   - **Declined** → advance to next task in the array. Loop.
-   - **Confirmed** → start timer and assign:
-     ```bash
-     $KHA update <task.id> --start-timer --assign
-     ```
-     Proceed to step 3.
-
-3. Classify type using the rules above. All context is already in the task object:
-   - `task.name`, `task.description` — task content
-   - `task.comments` array — full comment thread
-   - `task.kha_blocks` — any existing kha metadata
-   - If classification is ambiguous → ask one focused question. Wait for answer.
-   - If `Bug` and no reproduction steps in description or comments → ask user for them. Wait for answer.
-
-4. Write result (sets type, adds comment, moves to BACKLOG, stops timer):
-   ```bash
-   $KHA update <task.id> \
-     --status backlog \
-     --comment "[kha:triage]\ntype: <Type>\nreasoning: <one-line reasoning>" \
-     --stop-timer
-   ```
-
-## Clarifying Questions
-
-- Ask only when classification is genuinely unclear from title, description, and comments
-- One question per task, not a list of questions
-- Wait for answer before proceeding
 
 ## Output
 
