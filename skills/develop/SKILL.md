@@ -23,7 +23,7 @@ Never assume architecture, file structure, or implementation scope. When anythin
 
 ## Platform Setup
 
-Run once per session, cache `$KHA`:
+Run once per session, cache `$KHA` and `$PIPELINE`:
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
@@ -33,11 +33,16 @@ case "$_OS" in
 esac
 ```
 
+After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
+```bash
+PIPELINE="triage,backlog,scoping,in design,ready for development,in development,in review,testing,shipped"
+```
+
 ## Steps
 
 1. Fetch the first actionable task (Feature Advancement Rule applied internally; timer starts automatically):
    ```bash
-   result=$($KHA next "ready for development" --list <LIST_ID>)
+   result=$($KHA next "ready for development" --list <LIST_ID> --pipeline "$PIPELINE")
    ```
    - If `task` is null → report "No items in READY FOR DEVELOPMENT" and stop.
    - Report any `advanced_features` from the JSON.
@@ -53,7 +58,7 @@ esac
    - **Confirmed** → assign user: `$KHA update <task.id> --assign`. Proceed to step 4.
    - **Declined** → `$KHA cancel <task.id>`, fetch next:
      ```bash
-     result=$($KHA next "ready for development" --list <LIST_ID> --skip <all,seen,ids>)
+     result=$($KHA next "ready for development" --list <LIST_ID> --pipeline "$PIPELINE" --skip <all,seen,ids>)
      ```
      Loop back to step 2.
 

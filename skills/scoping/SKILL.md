@@ -35,7 +35,7 @@ The only actions allowed without confirmation: reading data, moving to the doing
 
 ## Platform Setup
 
-Run once per session, cache `$KHA`:
+Run once per session, cache `$KHA` and `$PIPELINE`:
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
@@ -45,13 +45,18 @@ case "$_OS" in
 esac
 ```
 
+After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
+```bash
+PIPELINE="triage,backlog,scoping,in design,ready for development,in development,in review,testing,shipped"
+```
+
 ## Steps
 
 1. **Find the task to process — try SCOPING first, fall back to BACKLOG:**
    ```bash
-   result=$($KHA next scoping --list <LIST_ID>)
+   result=$($KHA next scoping --list <LIST_ID> --pipeline "$PIPELINE")
    # if task is null:
-   result=$($KHA next backlog --list <LIST_ID>)
+   result=$($KHA next backlog --list <LIST_ID> --pipeline "$PIPELINE")
    ```
    If both return null → report "Nothing to scope — no tasks in BACKLOG or SCOPING." Stop.
    Timer starts automatically on whichever task is returned.
@@ -66,7 +71,7 @@ esac
    - **Declined** → cancel timer and get next:
      ```bash
      $KHA cancel <task.id>
-     result=$($KHA next <same-status> --list <LIST_ID> --skip <all,seen,ids>)
+     result=$($KHA next <same-status> --list <LIST_ID> --pipeline "$PIPELINE" --skip <all,seen,ids>)
      ```
      If null → try the other status or report "No tasks remaining." Loop.
 

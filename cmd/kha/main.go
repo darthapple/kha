@@ -56,36 +56,43 @@ func main() {
 		fatal(err)
 	}
 	client := clickup.NewClient(cfg.APIKey)
-	order := pipeline.NewOrder(cfg.Pipeline)
 
 	switch os.Args[1] {
 	case "next":
-		runNext(client, order, os.Args[2:])
+		runNext(client, cfg, os.Args[2:])
 	case "update":
-		runUpdate(client, order, os.Args[2:])
+		runUpdate(client, os.Args[2:])
 	case "cancel":
-		runCancel(client, order, os.Args[2:])
+		runCancel(client, os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
 	}
 }
 
-// ── kha next <status> --list <id> [--skip id1,id2] ──────────────────────────
+// ── kha next <status> --list <id> [--pipeline s1,s2,...] [--skip id1,id2] ───
 
-func runNext(client *clickup.Client, order *pipeline.Order, args []string) {
+func runNext(client *clickup.Client, cfg *config.Config, args []string) {
 	fs := flag.NewFlagSet("next", flag.ExitOnError)
 	listID := fs.String("list", "", "ClickUp list ID (required)")
+	pipelineFlag := fs.String("pipeline", "", "comma-separated pipeline status order, low→high")
 	skipCSV := fs.String("skip", "", "comma-separated task IDs to skip")
 	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fatalf("usage: kha next <status> --list <id> [--skip id1,id2]")
+		fatalf("usage: kha next <status> --list <id> [--pipeline s1,s2,...] [--skip id1,id2]")
 	}
 	status := strings.Join(fs.Args(), " ")
 	if *listID == "" {
 		fatalf("--list is required")
 	}
+
+	// build pipeline order: flag overrides config default
+	pipelineStatuses := cfg.Pipeline
+	if *pipelineFlag != "" {
+		pipelineStatuses = splitPipeline(*pipelineFlag)
+	}
+	order := pipeline.NewOrder(pipelineStatuses)
 
 	skip := parseCSV(*skipCSV)
 
@@ -199,7 +206,7 @@ func runNext(client *clickup.Client, order *pipeline.Order, args []string) {
 
 // ── kha update <task-id> [flags] ────────────────────────────────────────────
 
-func runUpdate(client *clickup.Client, _ *pipeline.Order, args []string) {
+func runUpdate(client *clickup.Client, args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	statusFlag := fs.String("status", "", "move task to this status")
 	commentFlag := fs.String("comment", "", "add comment (use \\n for newlines)")
@@ -285,7 +292,7 @@ func runUpdate(client *clickup.Client, _ *pipeline.Order, args []string) {
 
 // ── kha cancel <task-id> ────────────────────────────────────────────────────
 
-func runCancel(client *clickup.Client, _ *pipeline.Order, args []string) {
+func runCancel(client *clickup.Client, args []string) {
 	fs := flag.NewFlagSet("cancel", flag.ExitOnError)
 	fs.Parse(args)
 
@@ -311,7 +318,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `kha — ClickUp integration for kha skills
 
 Usage:
-  kha next <status> --list <id> [--skip id1,id2]
+  kha next <status> --list <id> [--pipeline s1,s2,...] [--skip id1,id2]
   kha update <task-id> [--status X] [--comment text] [--file path] [--assign] [--stop-timer] [--start-timer]
   kha cancel <task-id>`)
 }
@@ -343,4 +350,16 @@ func parseCSV(s string) map[string]bool {
 		}
 	}
 	return m
+}
+
+// splitPipeline splits a comma-separated pipeline string into an ordered slice.
+func splitPipeline(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }

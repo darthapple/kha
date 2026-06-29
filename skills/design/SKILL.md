@@ -24,7 +24,7 @@ Never assume architecture, file structure, or task scope. When anything is ambig
 
 ## Platform Setup
 
-Run once per session, cache `$KHA`:
+Run once per session, cache `$KHA` and `$PIPELINE`:
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
@@ -34,11 +34,16 @@ case "$_OS" in
 esac
 ```
 
+After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
+```bash
+PIPELINE="triage,backlog,scoping,in design,ready for development,in development,in review,testing,shipped"
+```
+
 ## Steps
 
 1. Fetch the first IN DESIGN task (timer starts automatically; Feature Advancement Rule applied internally):
    ```bash
-   result=$($KHA next "in design" --list <LIST_ID>)
+   result=$($KHA next "in design" --list <LIST_ID> --pipeline "$PIPELINE")
    ```
    - If `task` is null → report "No items in IN DESIGN" and stop.
    - Report any `advanced_features` from the JSON before continuing.
@@ -50,7 +55,7 @@ esac
      $KHA update <task.id> --status "ready for development" --stop-timer
      ```
      Report: "Task `[id]` auto-advanced to READY FOR DEVELOPMENT."
-     Fetch next: `result=$($KHA next "in design" --list <LIST_ID> --skip <all,seen,ids>)`
+     Fetch next: `result=$($KHA next "in design" --list <LIST_ID> --pipeline "$PIPELINE" --skip <all,seen,ids>)`
      Loop back to step 2.
    - **`type:feature`** → candidate found, proceed to selection loop.
 

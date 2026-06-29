@@ -26,7 +26,7 @@ Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickU
 
 ## Platform Setup
 
-Run once per session, cache `$KHA`:
+Run once per session, cache `$KHA` and `$PIPELINE`:
 ```bash
 _OS=$(uname -s 2>/dev/null || echo "Windows")
 case "$_OS" in
@@ -36,11 +36,16 @@ case "$_OS" in
 esac
 ```
 
+After reading the Pipeline doc (Context step 2), extract the ordered status names and set `$PIPELINE` — comma-separated, lowercased, exact names from the doc in pipeline order:
+```bash
+PIPELINE="triage,backlog,scoping,in design,ready for development,in development,in review,testing,shipped"
+```
+
 ## Steps
 
 1. Fetch the first TRIAGE task (timer starts automatically):
    ```bash
-   result=$($KHA next triage --list <LIST_ID>)
+   result=$($KHA next triage --list <LIST_ID> --pipeline "$PIPELINE")
    ```
    Parse `result` as JSON. If `task` is null → report `message` and stop.
 
@@ -50,7 +55,7 @@ esac
    - **Declined** → cancel timer and get next:
      ```bash
      $KHA cancel <task.id>
-     result=$($KHA next triage --list <LIST_ID> --skip <all,seen,ids>)
+     result=$($KHA next triage --list <LIST_ID> --pipeline "$PIPELINE" --skip <all,seen,ids>)
      ```
      If task null → report "No tasks remaining in TRIAGE" and stop. Otherwise loop.
 
