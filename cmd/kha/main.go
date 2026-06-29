@@ -12,24 +12,25 @@ import (
 	"github.com/darthapple/kha/internal/pipeline"
 )
 
-// NextResult is the JSON payload returned by `kha next`.
-type NextResult struct {
-	Task             *TaskSummary            `json:"task"`
-	Message          string                  `json:"message,omitempty"`
-	Comments         []clickup.Comment       `json:"comments,omitempty"`
-	KhaBlocks        map[string]map[string]any `json:"kha_blocks,omitempty"`
-	CurrentUser      *clickup.Member         `json:"current_user,omitempty"`
-	AdvancedFeatures []AdvancedFeature       `json:"advanced_features,omitempty"`
+// TaskEntry is one item in the NextResult tasks array.
+type TaskEntry struct {
+	ID          string                    `json:"id"`
+	Name        string                    `json:"name"`
+	Status      string                    `json:"status"`
+	TaskType    string                    `json:"task_type"`
+	Description string                    `json:"description"`
+	URL         string                    `json:"url"`
+	Assignees   []clickup.Member          `json:"assignees"`
+	Comments    []clickup.Comment         `json:"comments"`
+	KhaBlocks   map[string]map[string]any `json:"kha_blocks"`
 }
 
-type TaskSummary struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Status      string          `json:"status"`
-	TaskType    string          `json:"task_type"`
-	Description string          `json:"description"`
-	URL         string          `json:"url"`
-	Assignees   []clickup.Member `json:"assignees"`
+// NextResult is the JSON payload returned by `kha next`.
+type NextResult struct {
+	Tasks            []TaskEntry       `json:"tasks"`
+	Message          string            `json:"message,omitempty"`
+	CurrentUser      *clickup.Member   `json:"current_user,omitempty"`
+	AdvancedFeatures []AdvancedFeature `json:"advanced_features,omitempty"`
 }
 
 type AdvancedFeature struct {
@@ -70,31 +71,31 @@ func main() {
 	}
 }
 
-// ── kha next <status> --list <id> [--pipeline s1,s2,...] [--skip id1,id2] ───
+// ── kha next <status> --list <id> [--pipeline s1,s2,...] ────────────────────
+//
+// Returns ALL tasks in the given status as a sorted array. Features that are
+// advanced by the Feature Advancement Rule are excluded (they moved status).
+// Features that are NOT advanced are included. No timer is started.
 
 func runNext(client *clickup.Client, cfg *config.Config, args []string) {
 	fs := flag.NewFlagSet("next", flag.ExitOnError)
 	listID := fs.String("list", "", "ClickUp list ID (required)")
 	pipelineFlag := fs.String("pipeline", "", "comma-separated pipeline status order, low→high")
-	skipCSV := fs.String("skip", "", "comma-separated task IDs to skip")
 	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fatalf("usage: kha next <status> --list <id> [--pipeline s1,s2,...] [--skip id1,id2]")
+		fatalf("usage: kha next <status> --list <id> [--pipeline s1,s2,...]")
 	}
 	status := strings.Join(fs.Args(), " ")
 	if *listID == "" {
 		fatalf("--list is required")
 	}
 
-	// build pipeline order: flag overrides config default
 	pipelineStatuses := cfg.Pipeline
 	if *pipelineFlag != "" {
 		pipelineStatuses = splitPipeline(*pipelineFlag)
 	}
 	order := pipeline.NewOrder(pipelineStatuses)
-
-	skip := parseCSV(*skipCSV)
 
 	tasks, err := client.ListTasks(*listID, status)
 	if err != nil {
@@ -112,21 +113,12 @@ func runNext(client *clickup.Client, cfg *config.Config, args []string) {
 		fatal(err)
 	}
 
-	// resolve team ID: take from first task
-	teamID := sorted[0].TeamID
-
 	var advanced []AdvancedFeature
-	var chosen *clickup.TaskWithOrder
+	var entries []TaskEntry
 
 	for i := range sorted {
 		t := &sorted[i]
 
-		// skip explicitly excluded IDs
-		if skip[t.ID] {
-			continue
-		}
-
-		// get comments for this task to determine type when task_type is ambiguous
 		taskComments, err := client.GetComments(t.ID)
 		if err != nil {
 			fatal(err)
@@ -134,12 +126,7 @@ func runNext(client *clickup.Client, cfg *config.Config, args []string) {
 		blocks := pipeline.ParseKhaBlocks(taskComments)
 		typeName := pipeline.TaskTypeName(t.RawType.String(), blocks)
 
-		switch typeName {
-		case "epic":
-			// epics are not actionable here
-			continue
-
-		case "feature":
+		if typeName == "feature" {
 			oldStatus := t.Status.Status
 			newStatus, err := pipeline.AdvanceFeature(
 				t,
@@ -154,53 +141,45 @@ func runNext(client *clickup.Client, cfg *config.Config, args []string) {
 				fatal(err)
 			}
 			if newStatus != "" {
+				// Feature was advanced — it moved status, exclude from list
 				advanced = append(advanced, AdvancedFeature{
 					ID: t.ID, Name: t.Name,
 					OldStatus: oldStatus, NewStatus: newStatus,
 				})
+				continue
 			}
-			continue // features are never the returned task
-
-		default:
-			chosen = t
-			chosenComments := taskComments
-			chosenBlocks := blocks
-
-			// start timer on chosen task
-			if teamID != "" {
-				if err := client.StartTimer(teamID, chosen.ID); err != nil {
-					// non-fatal: timer failure should not block the skill
-					fmt.Fprintf(os.Stderr, "warning: could not start timer: %v\n", err)
-				}
-			}
-
-			assignees := make([]clickup.Member, len(chosen.Assignees))
-			copy(assignees, chosen.Assignees)
-
-			printJSON(NextResult{
-				Task: &TaskSummary{
-					ID:          chosen.ID,
-					Name:        chosen.Name,
-					Status:      chosen.Status.Status,
-					TaskType:    typeName,
-					Description: chosen.Description,
-					URL:         chosen.URL,
-					Assignees:   assignees,
-				},
-				Comments:         chosenComments,
-				KhaBlocks:        chosenBlocks,
-				CurrentUser:      user,
-				AdvancedFeatures: advanced,
-			})
-			return
+			// Feature not advanced — include it so the skill can handle it
 		}
+
+		assignees := make([]clickup.Member, len(t.Assignees))
+		copy(assignees, t.Assignees)
+
+		entries = append(entries, TaskEntry{
+			ID:          t.ID,
+			Name:        t.Name,
+			Status:      t.Status.Status,
+			TaskType:    typeName,
+			Description: t.Description,
+			URL:         t.URL,
+			Assignees:   assignees,
+			Comments:    taskComments,
+			KhaBlocks:   blocks,
+		})
 	}
 
-	// No actionable task found
+	if len(entries) == 0 {
+		printJSON(NextResult{
+			Message:          "No actionable items in " + status,
+			AdvancedFeatures: advanced,
+			CurrentUser:      user,
+		})
+		return
+	}
+
 	printJSON(NextResult{
-		Message:          "No actionable items in " + status,
-		AdvancedFeatures: advanced,
+		Tasks:            entries,
 		CurrentUser:      user,
+		AdvancedFeatures: advanced,
 	})
 }
 
@@ -223,7 +202,6 @@ func runUpdate(client *clickup.Client, args []string) {
 
 	result := UpdateResult{TaskID: taskID}
 
-	// fetch task once for team ID and existing assignees
 	var task *clickup.TaskWithOrder
 	needTask := *assignFlag || *stopTimer || *startTimer
 
@@ -318,7 +296,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `kha — ClickUp integration for kha skills
 
 Usage:
-  kha next <status> --list <id> [--pipeline s1,s2,...] [--skip id1,id2]
+  kha next <status> --list <id> [--pipeline s1,s2,...]
   kha update <task-id> [--status X] [--comment text] [--file path] [--assign] [--stop-timer] [--start-timer]
   kha cancel <task-id>`)
 }
@@ -341,18 +319,6 @@ func printJSON(v any) {
 	}
 }
 
-func parseCSV(s string) map[string]bool {
-	m := make(map[string]bool)
-	for _, v := range strings.Split(s, ",") {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			m[v] = true
-		}
-	}
-	return m
-}
-
-// splitPipeline splits a comma-separated pipeline string into an ordered slice.
 func splitPipeline(s string) []string {
 	var out []string
 	for _, v := range strings.Split(s, ",") {

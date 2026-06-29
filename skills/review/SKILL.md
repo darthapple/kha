@@ -5,6 +5,8 @@ description: Use when reviewing tasks in IN REVIEW status. Reviews implementatio
 
 # kha: Review
 
+> **ONE TASK PER INVOCATION.** Fetch all IN REVIEW tasks once, iterate locally, process one. Do not call `$KHA next` more than once.
+
 Reviews tasks in `IN REVIEW` status. Evaluates the implementation against acceptance criteria from scoping, architecture decisions from design, stack best practices, and security. Moves to `TESTING` on pass or stays in `IN REVIEW` with specific, actionable findings on fail.
 
 ## Context
@@ -32,39 +34,41 @@ PIPELINE="triage,backlog,scoping,in design,ready for development,in development,
 
 ## Steps
 
-1. Fetch the first IN REVIEW task (Feature Advancement Rule applied internally; timer starts automatically):
+> **Call `$KHA next` exactly once.** It returns all tasks in IN REVIEW. Iterate `result.tasks` locally — never call `$KHA next` again during this session.
+
+1. Fetch all IN REVIEW tasks:
    ```bash
    result=$($KHA next "in review" --list <LIST_ID> --pipeline "$PIPELINE")
    ```
-   - If `task` is null → report "No items in IN REVIEW" and stop.
-   - Report any `advanced_features` from the JSON.
+   - If `result.tasks` is empty → report "No items in IN REVIEW" and stop.
+   - Report any `result.advanced_features`.
 
-2. **Type gate**: if `task.task_type` is `feature` → the binary already handled advancement; this case means nothing was advanced. `$KHA cancel <task.id>` and stop.
-
-3. **Selection loop:**
+2. **Selection loop** — iterate `result.tasks` from index 0:
+   - If all tasks exhausted → report "No tasks remaining in IN REVIEW" and stop.
    - Present: "Found: **[task.name]** (ID: `[task.id]`). Review this task?"
-   - **Confirmed** → assign user: `$KHA update <task.id> --assign`. Proceed to step 4.
-   - **Declined** → `$KHA cancel <task.id>`, fetch next:
+   - **Declined** → advance to next in the array. Loop.
+   - **Confirmed** → assign user and start timer:
      ```bash
-     result=$($KHA next "in review" --list <LIST_ID> --pipeline "$PIPELINE" --skip <all,seen,ids>)
+     $KHA update <task.id> --start-timer --assign
      ```
-     Loop back to step 2.
+     Proceed to step 3.
 
-4. All context is in the JSON:
-   - `kha_blocks.scoping` — acceptance criteria
-   - `kha_blocks.design` — architecture decisions
-   - If neither exists → ask: "I couldn't find scoping or design comments. Should I proceed without acceptance criteria, or re-scope first?"
+3. All context is already in the task object:
+   - `task.kha_blocks.scoping` — acceptance criteria
+   - `task.kha_blocks.design` — architecture decisions
+   - `task.kha_blocks["design:context"]` — per-task scope and criteria
+   - If neither scoping nor design blocks exist → ask: "I couldn't find scoping or design comments. Should I proceed without acceptance criteria, or re-scope first?"
 
-5. Read the current git diff:
+4. Read the current git diff:
    ```bash
    git diff develop...HEAD
    ```
 
-6. **Review Layer 1 — Acceptance criteria:** For each criterion in `kha_blocks.scoping`, evaluate whether the implementation satisfies it. Cite file and line. Mark ✅ or ❌.
+5. **Review Layer 1 — Acceptance criteria:** For each criterion in `kha_blocks.scoping` or `kha_blocks["design:context"]`, evaluate whether the implementation satisfies it. Cite file and line. Mark ✅ or ❌.
 
-7. **Review Layer 2 — Best practices:** Check for idiomatic patterns, clarity, naming, dead code, unnecessary duplication. Cite file and line.
+6. **Review Layer 2 — Best practices:** Check for idiomatic patterns, clarity, naming, dead code, unnecessary duplication. Cite file and line.
 
-8. **Review Layer 3 — Security:** Check for OWASP Top 10 risks relevant to the stack:
+7. **Review Layer 3 — Security:** Check for OWASP Top 10 risks relevant to the stack:
    - Injection (SQL, command, template)
    - Broken authentication / session management
    - Sensitive data exposure (secrets in code, unencrypted storage)
@@ -75,7 +79,7 @@ PIPELINE="triage,backlog,scoping,in design,ready for development,in development,
    - Stack-specific vulnerabilities (prototype pollution in JS, SSRF in server code, etc.)
    Cite file and line for every issue.
 
-9. **Decision:**
+8. **Decision:**
    - All criteria ✅ and no blocking issue:
      ```bash
      $KHA update <task.id> \

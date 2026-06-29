@@ -5,7 +5,7 @@ description: Use when testing tasks in TESTING status. Writes and runs automated
 
 # kha: QA
 
-> **ONE TASK PER INVOCATION.** The binary handles Feature Advancement Rule and ordering. Present the first valid task to the user. Feature advancement events are reported in the JSON response.
+> **ONE TASK PER INVOCATION.** Fetch all TESTING tasks once, iterate locally, process one. Do not call `$KHA next` more than once.
 
 Processes one task in `TESTING` status. Writes and runs automated tests tied to acceptance criteria. For criteria that genuinely cannot be automated (confirmed with human), creates a manual checklist and moves to `MANUAL TESTING`. Moves to `SHIPPED` on full automated pass.
 
@@ -44,27 +44,30 @@ PIPELINE="triage,backlog,scoping,in design,ready for development,in development,
 
 ## Steps
 
-1. Fetch the first TESTING task (Feature Advancement Rule applied internally; timer starts automatically):
+> **Call `$KHA next` exactly once.** It returns all tasks in TESTING. Iterate `result.tasks` locally — never call `$KHA next` again during this session.
+
+1. Fetch all TESTING tasks:
    ```bash
    result=$($KHA next testing --list <LIST_ID> --pipeline "$PIPELINE")
    ```
-   - If `task` is null → report "No items in TESTING" and stop.
-   - Report any `advanced_features` from the JSON.
+   - If `result.tasks` is empty → report "No items in TESTING" and stop.
+   - Report any `result.advanced_features`.
 
-2. **Selection loop:**
+2. **Selection loop** — iterate `result.tasks` from index 0:
+   - If all tasks exhausted → report "No tasks remaining in TESTING" and stop.
    - Present: "Found: **[task.name]** (ID: `[task.id]`). Process this task?"
-   - **Confirmed** → assign user: `$KHA update <task.id> --assign`. Proceed to step 3.
-   - **Declined** → `$KHA cancel <task.id>`, fetch next:
+   - **Declined** → advance to next in the array. Loop.
+   - **Confirmed** → assign user and start timer:
      ```bash
-     result=$($KHA next testing --list <LIST_ID> --pipeline "$PIPELINE" --skip <all,seen,ids>)
+     $KHA update <task.id> --start-timer --assign
      ```
-     Loop back to step 2.
+     Proceed to step 3.
 
-3. Extract from JSON:
-   - For `type:task`: implementation-scope criteria from `kha_blocks["design:context"]` or `kha_blocks.scoping`
-   - For `type:feature`: user-facing criteria from `kha_blocks.scoping`
-   - Architecture context from `kha_blocks.design`
-   - Review summary from `kha_blocks.review`
+3. Extract from the task object:
+   - For `type:task`: implementation-scope criteria from `task.kha_blocks["design:context"]` or `task.kha_blocks.scoping`
+   - For `type:feature`: user-facing criteria from `task.kha_blocks.scoping`
+   - Architecture context from `task.kha_blocks.design`
+   - Review summary from `task.kha_blocks.review`
 
 4. **Assess automability per criterion:**
    - `type:task` criteria → unit tests or integration tests

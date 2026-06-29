@@ -5,7 +5,7 @@ description: Use when triaging tasks in TRIAGE status. Classifies each by type u
 
 # kha: Triage
 
-> **ONE TASK PER INVOCATION.** Iterate the ordered list; present the first task to the user. If the user declines, present the next. Process only one task per invocation — declining is selection, not processing.
+> **ONE TASK PER INVOCATION.** Fetch all TRIAGE tasks once, iterate locally, process one. Do not call `$KHA next` more than once.
 
 Processes one task in `TRIAGE` status. Classifies it by type (sets native ClickUp Task Type field) and moves to `BACKLOG`.
 
@@ -43,34 +43,37 @@ PIPELINE="triage,backlog,scoping,in design,ready for development,in development,
 
 ## Steps
 
-1. Fetch the first TRIAGE task (timer starts automatically):
+> **Call `$KHA next` exactly once.** It returns all tasks in the status. Iterate `result.tasks` locally — never call `$KHA next` again during this session.
+
+1. Fetch all TRIAGE tasks:
    ```bash
    result=$($KHA next triage --list <LIST_ID> --pipeline "$PIPELINE")
    ```
-   Parse `result` as JSON. If `task` is null → report `message` and stop.
+   Parse `result` as JSON. If `result.tasks` is empty → report `result.message` and stop.
+   Report any `result.advanced_features`.
 
-2. **Selection loop:**
+2. **Selection loop** — iterate `result.tasks` from index 0:
+   - If all tasks exhausted → report "No tasks remaining in TRIAGE" and stop.
    - Present: "Found: **[task.name]** (ID: `[task.id]`). Triage this task?"
-   - **Confirmed** → proceed to step 3.
-   - **Declined** → cancel timer and get next:
+   - **Declined** → advance to next task in the array. Loop.
+   - **Confirmed** → start timer and assign:
      ```bash
-     $KHA cancel <task.id>
-     result=$($KHA next triage --list <LIST_ID> --pipeline "$PIPELINE" --skip <all,seen,ids>)
+     $KHA update <task.id> --start-timer --assign
      ```
-     If task null → report "No tasks remaining in TRIAGE" and stop. Otherwise loop.
+     Proceed to step 3.
 
-3. Classify type using the rules above. All context is in the JSON:
+3. Classify type using the rules above. All context is already in the task object:
    - `task.name`, `task.description` — task content
-   - `comments` array — full comment thread
+   - `task.comments` array — full comment thread
+   - `task.kha_blocks` — any existing kha metadata
    - If classification is ambiguous → ask one focused question. Wait for answer.
    - If `Bug` and no reproduction steps in description or comments → ask user for them. Wait for answer.
 
-4. Write result (sets type, assigns current user, adds comment, moves to BACKLOG, stops timer):
+4. Write result (sets type, adds comment, moves to BACKLOG, stops timer):
    ```bash
    $KHA update <task.id> \
      --status backlog \
      --comment "[kha:triage]\ntype: <Type>\nreasoning: <one-line reasoning>" \
-     --assign \
      --stop-timer
    ```
 
