@@ -81,7 +81,19 @@ If `tasks` is empty → report `message` and stop.
 
 ---
 
-**Step 2 — Selection loop** (iterate `tasks` array by index, no CLI calls):
+**Step 2 — Task selection:**
+
+```bash
+KHA_MODE="${KHA_MODE:-interactive}"
+```
+
+**If `KHA_MODE=auto`:** Take `tasks[0]`. If `tasks` is empty → report "No tasks in TRIAGE" and stop. Report: "Auto-selected: **[name]** ([task_type])". Start timer and assign:
+```bash
+"$KHA" update <task.id> --start-timer --assign
+```
+Proceed to Step 2b.
+
+**If `KHA_MODE=interactive` (default):** (iterate `tasks` array by index, no CLI calls)
 
 - Start at `tasks[0]`. Present: "Found: **[name]** (`[task_type]`). Triage this task?"
 - **Declined** → move to `tasks[1]`, `tasks[2]`, etc. No CLI call needed.

@@ -74,7 +74,18 @@ If `tasks` is empty → report `message` + any `advanced_features` and stop.
 
 ---
 
-**Step 2 — Selection loop:**
+**Step 2 — Task selection:**
+
+```bash
+KHA_MODE="${KHA_MODE:-interactive}"
+```
+
+**If `KHA_MODE=auto`:** Find the first `tasks[i]` where `task_type` is `task` or `bug`. For each skipped, log: "Skipped [epic|feature] **[name]** — run kha:[scoping|design] first." If none found → report "No actionable tasks in READY FOR DEVELOPMENT" and stop. Report: "Auto-selected: **[name]** ([task_type])". Assign and start timer:
+```bash
+"$KHA" update <task.id> --start-timer --assign
+```
+
+**If `KHA_MODE=interactive` (default):**
 
 - Start at `tasks[0]`. Check `task_type`:
   - **`epic`** → say "Epic — run kha:scoping first." Skip to next.

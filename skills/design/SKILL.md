@@ -84,7 +84,18 @@ Report any `advanced_features` before continuing.
 
 ---
 
-**Step 2 — Selection loop:**
+**Step 2 — Task selection:**
+
+```bash
+KHA_MODE="${KHA_MODE:-interactive}"
+```
+
+**If `KHA_MODE=auto`:** Find the first `tasks[i]` where `task_type ≠ epic`. For each skipped epic, log: "Skipped epic **[name]** — run kha:scoping first." If none found → report "No designable tasks in IN DESIGN" and stop. Report: "Auto-selected: **[name]** ([task_type])". Assign and start timer:
+```bash
+"$KHA" update <task.id> --start-timer --assign
+```
+
+**If `KHA_MODE=interactive` (default):**
 
 - Start at `tasks[0]`. Check `task_type`:
   - **`epic`** → say "This is an epic — run kha:scoping first." Skip to `tasks[1]`.

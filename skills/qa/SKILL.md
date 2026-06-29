@@ -76,7 +76,18 @@ If `tasks` is empty → report `message` + any `advanced_features` and stop.
 
 ---
 
-**Step 2 — Selection loop:**
+**Step 2 — Task selection:**
+
+```bash
+KHA_MODE="${KHA_MODE:-interactive}"
+```
+
+**If `KHA_MODE=auto`:** Take `tasks[0]`. If `tasks` is empty → report "No tasks in TESTING" and stop. Report: "Auto-selected: **[name]** ([task_type])". Assign and start timer:
+```bash
+"$KHA" update <task.id> --start-timer --assign
+```
+
+**If `KHA_MODE=interactive` (default):**
 
 - Start at `tasks[0]`. Present: "Found: **[name]**. Process this task?"
 - **Declined** → move to `tasks[1]`, etc. No CLI call.

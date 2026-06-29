@@ -91,7 +91,18 @@ If both return empty `tasks` → report "Nothing to scope" and stop.
 
 ---
 
-**Step 2 — Selection loop:**
+**Step 2 — Task selection:**
+
+```bash
+KHA_MODE="${KHA_MODE:-interactive}"
+```
+
+**If `KHA_MODE=auto`:** Take `tasks[0]`. If `tasks` is empty → report "Nothing to scope" and stop. Report: "Auto-selected: **[name]** ([task_type])". Move to doing state, assign, start timer:
+```bash
+"$KHA" update <task.id> --status scoping --start-timer --assign
+```
+
+**If `KHA_MODE=interactive` (default):**
 
 - Start at `tasks[0]`. Present: "Found: **[name]** (`[task_type]`). Process this task?"
 - **Declined** → move to `tasks[1]`, etc. No CLI call.
