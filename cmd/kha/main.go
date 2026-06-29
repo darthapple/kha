@@ -78,15 +78,18 @@ func main() {
 // Features that are NOT advanced are included. No timer is started.
 
 func runNext(client *clickup.Client, cfg *config.Config, args []string) {
+	if len(args) < 1 {
+		fatalf("usage: kha next <status> --list <id> [--pipeline s1,s2,...]")
+	}
+	// Status is always the first arg; flags follow. Go's flag parser stops at
+	// the first non-flag arg, so we must separate status from flags manually.
+	status := args[0]
+
 	fs := flag.NewFlagSet("next", flag.ExitOnError)
 	listID := fs.String("list", "", "ClickUp list ID (required)")
 	pipelineFlag := fs.String("pipeline", "", "comma-separated pipeline status order, low→high")
-	fs.Parse(args)
+	fs.Parse(args[1:])
 
-	if fs.NArg() < 1 {
-		fatalf("usage: kha next <status> --list <id> [--pipeline s1,s2,...]")
-	}
-	status := strings.Join(fs.Args(), " ")
 	if *listID == "" {
 		fatalf("--list is required")
 	}

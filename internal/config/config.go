@@ -28,6 +28,7 @@ var defaultPipeline = []string{
 }
 
 type fileConfig struct {
+	APIKey    string   `json:"CLICKUP_API_KEY"`
 	UserEmail string   `json:"user_email"`
 	Pipeline  []string `json:"pipeline"`
 }
@@ -47,11 +48,14 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// 3. ~/.kha/config.json for email and custom pipeline
+	// 3. ~/.kha/config.json — api_key, user_email, pipeline
 	cfgPath := filepath.Join(homeDir(), ".kha", "config.json")
 	if data, err := os.ReadFile(cfgPath); err == nil {
 		var fc fileConfig
 		if json.Unmarshal(data, &fc) == nil {
+			if cfg.APIKey == "" && fc.APIKey != "" {
+				cfg.APIKey = fc.APIKey
+			}
 			if fc.UserEmail != "" {
 				cfg.UserEmail = fc.UserEmail
 			}
