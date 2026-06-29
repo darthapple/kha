@@ -189,6 +189,14 @@ func runNext(client *clickup.Client, cfg *config.Config, args []string) {
 // ── kha update <task-id> [flags] ────────────────────────────────────────────
 
 func runUpdate(client *clickup.Client, args []string) {
+	if len(args) < 1 {
+		fatalf("usage: kha update <task-id> [--status X] [--comment text] [--file path] [--assign] [--stop-timer] [--start-timer]")
+	}
+	// Task ID is always the first positional arg; parse flags from the rest.
+	// Go's flag package stops at the first non-flag token, so if we passed
+	// the task ID through fs.Parse it would silently swallow all subsequent flags.
+	taskID := args[0]
+
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	statusFlag := fs.String("status", "", "move task to this status")
 	commentFlag := fs.String("comment", "", "add comment (use \\n for newlines)")
@@ -196,12 +204,7 @@ func runUpdate(client *clickup.Client, args []string) {
 	assignFlag := fs.Bool("assign", false, "assign current user")
 	stopTimer := fs.Bool("stop-timer", false, "stop active time entry")
 	startTimer := fs.Bool("start-timer", false, "start time entry")
-	fs.Parse(args)
-
-	if fs.NArg() < 1 {
-		fatalf("usage: kha update <task-id> [--status X] [--comment text] [--file path] [--assign] [--stop-timer] [--start-timer]")
-	}
-	taskID := fs.Arg(0)
+	fs.Parse(args[1:])
 
 	result := UpdateResult{TaskID: taskID}
 
