@@ -25,14 +25,17 @@ install:
 	@mkdir -p ~/.kha
 	@OS=$$(uname -s); ARCH=$$(uname -m); \
 	if [ "$$OS" = "Darwin" ] && [ "$$ARCH" = "arm64" ]; then \
+		GOOS=darwin GOARCH=arm64 go build -o $(OUTDIR)/$(BIN)-darwin-arm64 $(PKG); \
 		cp $(OUTDIR)/$(BIN)-darwin-arm64 ~/.kha/$(BIN)-darwin-arm64; \
 		cp $(OUTDIR)/$(BIN)-darwin-arm64 ~/.kha/$(BIN); \
 		echo "Installed ~/.kha/$(BIN) (darwin-arm64)"; \
 	elif [ "$$OS" = "Darwin" ]; then \
+		GOOS=darwin GOARCH=amd64 go build -o $(OUTDIR)/$(BIN)-darwin-amd64 $(PKG); \
 		cp $(OUTDIR)/$(BIN)-darwin-amd64 ~/.kha/$(BIN)-darwin-amd64; \
 		cp $(OUTDIR)/$(BIN)-darwin-amd64 ~/.kha/$(BIN); \
 		echo "Installed ~/.kha/$(BIN) (darwin-amd64)"; \
 	elif [ "$$OS" = "Linux" ]; then \
+		GOOS=linux GOARCH=amd64 go build -o $(OUTDIR)/$(BIN)-linux-amd64 $(PKG); \
 		cp $(OUTDIR)/$(BIN)-linux-amd64 ~/.kha/$(BIN)-linux-amd64; \
 		cp $(OUTDIR)/$(BIN)-linux-amd64 ~/.kha/$(BIN); \
 		echo "Installed ~/.kha/$(BIN) (linux-amd64)"; \

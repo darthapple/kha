@@ -11,9 +11,9 @@ Reviews one task in `IN REVIEW` status against acceptance criteria, best practic
 
 ## Context
 
-1. Read `AGENTS.md` → find `list_id`
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → get exact status names in order
-3. Read the project's stack files (`package.json`, framework config) to know which security rules apply
+Read `AGENTS.md` once → note `list_id` and the pipeline order (the `→`-separated statuses in the Pipeline section). Read the project's stack files (`package.json`, framework config) to know which security rules apply.
+
+Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## Steps
 
@@ -23,6 +23,10 @@ Reviews one task in `IN REVIEW` status against acceptance criteria, best practic
 KHA="$HOME/.kha/kha"; [ -f .env.local ] && source .env.local
 "$KHA" next "in review" --list <LIST_ID> --pipeline "<PIPELINE>"
 ```
+
+Replace `<LIST_ID>` with the list ID from `AGENTS.md`. Replace `<PIPELINE>` with the pipeline from `AGENTS.md` (the `→`-separated statuses, lowercased, comma-separated).
+
+**If this command exits with an error → report the exact error text and stop. Do NOT retry.**
 
 **The response JSON has this exact shape:**
 ```json

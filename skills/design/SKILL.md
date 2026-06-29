@@ -11,9 +11,9 @@ Processes one task in `IN DESIGN` status. Analyzes the codebase, defines archite
 
 ## Context
 
-1. Read `AGENTS.md` → find `list_id`
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → get exact status names in order
-3. Read Taxonomy doc (`_Config` space, doc ID: `2kza2py5-537`) → type definitions
+Read `AGENTS.md` once → note `list_id` and the pipeline order (the `→`-separated statuses in the Pipeline section).
+
+Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## No Silent Assumptions
 
@@ -28,7 +28,9 @@ KHA="$HOME/.kha/kha"; [ -f .env.local ] && source .env.local
 "$KHA" next "in design" --list <LIST_ID> --pipeline "<PIPELINE>"
 ```
 
-Replace `<LIST_ID>` with the value from `AGENTS.md`. Replace `<PIPELINE>` with the exact ordered status names from the Pipeline doc (comma-separated, lowercased).
+Replace `<LIST_ID>` with the list ID from `AGENTS.md`. Replace `<PIPELINE>` with the pipeline from `AGENTS.md` (the `→`-separated statuses, lowercased, comma-separated: e.g. `triage,backlog,scoping,in design,...`).
+
+**If this command exits with an error → report the exact error text and stop. Do NOT retry with different arguments.**
 
 **The response JSON has this exact shape:**
 ```json

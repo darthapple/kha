@@ -11,9 +11,9 @@ Processes one task in `TESTING` status. Writes and runs automated tests tied to 
 
 ## Context
 
-1. Read `AGENTS.md` → find `list_id`
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → confirm status names; check if `MANUAL TESTING` exists
-3. Read test setup: runner, directory structure, existing test files, Playwright config
+Read `AGENTS.md` once → note `list_id` and the pipeline order (the `→`-separated statuses in the Pipeline section). Read test setup: runner, directory structure, existing test files, Playwright config.
+
+Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## MANUAL TESTING Status
 
@@ -31,6 +31,10 @@ Never classify a criterion as "not automatable" without explaining why and getti
 KHA="$HOME/.kha/kha"; [ -f .env.local ] && source .env.local
 "$KHA" next testing --list <LIST_ID> --pipeline "<PIPELINE>"
 ```
+
+Replace `<LIST_ID>` with the list ID from `AGENTS.md`. Replace `<PIPELINE>` with the pipeline from `AGENTS.md` (the `→`-separated statuses, lowercased, comma-separated).
+
+**If this command exits with an error → report the exact error text and stop. Do NOT retry.**
 
 **The response JSON has this exact shape:**
 ```json

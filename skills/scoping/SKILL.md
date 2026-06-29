@@ -20,9 +20,9 @@ Bug      — leaf node; treated like type:task
 
 ## Context
 
-1. Read `AGENTS.md` → find `list_id`
-2. Read Pipeline doc (`_Config` space, doc ID: `2kza2py5-517`) → get exact status names in order
-3. Read Taxonomy doc (`_Config` space, doc ID: `2kza2py5-537`) → type definitions
+Read `AGENTS.md` once → note `list_id` and the pipeline order (the `→`-separated statuses in the Pipeline section).
+
+Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## No Silent Assumptions
 
@@ -33,6 +33,10 @@ Never assume intent or scope. When ambiguous: state what you observed, present y
 **Step 1 — Fetch tasks (try SCOPING first, fall back to BACKLOG):**
 
 Run the first bash block. If `tasks` is empty, run the second.
+
+Replace `<LIST_ID>` with the list ID from `AGENTS.md`. Replace `<PIPELINE>` with the pipeline from `AGENTS.md` (the `→`-separated statuses, lowercased, comma-separated: e.g. `triage,backlog,scoping,...`). Use the same values in both blocks.
+
+**If either command exits with an error → report the exact error text and stop. Do NOT retry.**
 
 ```bash
 KHA="$HOME/.kha/kha"; [ -f .env.local ] && source .env.local
