@@ -9,6 +9,11 @@
   },
   "skills": [
     "./skills/issue",
-    "./skills/triage"
+    "./skills/triage",
+    "./skills/scoping",
+    "./skills/design",
+    "./skills/develop",
+    "./skills/review",
+    "./skills/qa"
   ]
 }
