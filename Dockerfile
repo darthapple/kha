@@ -26,7 +26,8 @@ RUN git config --global user.name "kha agent" && \
     git config --global credential.helper store
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY docker-entrypoint-once.sh /usr/local/bin/docker-entrypoint-once.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-entrypoint-once.sh
 
 ENV KHA_MODE=auto
 WORKDIR /workspace

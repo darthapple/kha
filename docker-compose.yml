@@ -1,0 +1,26 @@
+services:
+  nats:
+    image: nats:2-alpine
+    command: -js
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+
+  manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.manager
+    env_file: .env.agents
+    environment:
+      # These have sensible defaults; override in .env.agents if needed.
+      SKILL_IMAGE: ${SKILL_IMAGE:-ghcr.io/darthapple/kha:latest}
+      NATS_URL: nats://nats:4222
+      POLL_INTERVAL: ${POLL_INTERVAL:-60}
+      SLOT_TTL: ${SLOT_TTL:-1800}
+      # PROJECT_REPO_URL and CLICKUP_LIST_ID come from .env.agents via env_file above.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    depends_on:
+      - nats

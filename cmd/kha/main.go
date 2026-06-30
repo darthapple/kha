@@ -65,6 +65,10 @@ func main() {
 		runUpdate(client, os.Args[2:])
 	case "cancel":
 		runCancel(client, os.Args[2:])
+	case "create-task":
+		runCreateTask(client, os.Args[2:])
+	case "ensure-status":
+		runEnsureStatus(client, os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -199,6 +203,7 @@ func runUpdate(client *clickup.Client, args []string) {
 
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	statusFlag := fs.String("status", "", "move task to this status")
+	taskTypeFlag := fs.String("task-type", "", "set native task type: bug, feature, task, epic, milestone")
 	commentFlag := fs.String("comment", "", "add comment (use \\n for newlines)")
 	fileFlag := fs.String("file", "", "attach file at this path")
 	assignFlag := fs.Bool("assign", false, "assign current user")
@@ -224,6 +229,13 @@ func runUpdate(client *clickup.Client, args []string) {
 			fatal(err)
 		}
 		result.Actions = append(result.Actions, "status → "+*statusFlag)
+	}
+
+	if *taskTypeFlag != "" {
+		if err := client.UpdateTask(taskID, map[string]any{"task_type": *taskTypeFlag}); err != nil {
+			fatal(err)
+		}
+		result.Actions = append(result.Actions, "task_type → "+*taskTypeFlag)
 	}
 
 	if *assignFlag {
@@ -274,6 +286,61 @@ func runUpdate(client *clickup.Client, args []string) {
 	printJSON(result)
 }
 
+// ── kha create-task --list <id> --name <title> --status <s> [--parent <id>] [--type <t>] [--description <d>] ──
+
+func runCreateTask(client *clickup.Client, args []string) {
+	fs := flag.NewFlagSet("create-task", flag.ExitOnError)
+	listID := fs.String("list", "", "ClickUp list ID (required)")
+	name := fs.String("name", "", "task title (required)")
+	status := fs.String("status", "triage", "initial task status")
+	taskType := fs.String("type", "", "task type: bug, feature, task, epic")
+	parentID := fs.String("parent", "", "parent task ID for subtasks")
+	description := fs.String("description", "", "task description")
+	fs.Parse(args)
+
+	if *listID == "" {
+		fatalf("--list is required")
+	}
+	if *name == "" {
+		fatalf("--name is required")
+	}
+
+	task, err := client.CreateTask(*listID, *name, *status, *taskType, *parentID, clickup.ResolveNewlines(*description))
+	if err != nil {
+		fatal(err)
+	}
+	printJSON(map[string]string{"id": task.ID, "url": task.URL})
+}
+
+// ── kha ensure-status --list <id> --name <name> --color <hex> [--before/--after <status>] ──
+
+func runEnsureStatus(client *clickup.Client, args []string) {
+	fs := flag.NewFlagSet("ensure-status", flag.ExitOnError)
+	listID := fs.String("list", "", "ClickUp list ID (required)")
+	name := fs.String("name", "", "status name (required)")
+	color := fs.String("color", "#f9f9f9", "status color hex")
+	before := fs.String("before", "", "insert before this existing status name")
+	after := fs.String("after", "", "insert after this existing status name")
+	fs.Parse(args)
+
+	if *listID == "" {
+		fatalf("--list is required")
+	}
+	if *name == "" {
+		fatalf("--name is required")
+	}
+
+	created, err := client.EnsureListStatus(*listID, *name, *color, *before, *after)
+	if err != nil {
+		fatal(err)
+	}
+	if created {
+		printJSON(map[string]any{"created": true, "name": *name})
+	} else {
+		printJSON(map[string]any{"created": false, "name": *name, "reason": "already exists"})
+	}
+}
+
 // ── kha cancel <task-id> ────────────────────────────────────────────────────
 
 func runCancel(client *clickup.Client, args []string) {
@@ -303,8 +370,10 @@ func usage() {
 
 Usage:
   kha next <status> --list <id> [--pipeline s1,s2,...]
-  kha update <task-id> [--status X] [--comment text] [--file path] [--assign] [--stop-timer] [--start-timer]
-  kha cancel <task-id>`)
+  kha update <task-id> [--status X] [--task-type T] [--comment text] [--file path] [--assign] [--stop-timer] [--start-timer]
+  kha cancel <task-id>
+  kha create-task --list <id> --name <title> --status <s> [--parent <id>] [--type <t>] [--description <d>]
+  kha ensure-status --list <id> --name <name> --color <hex> [--before <status>] [--after <status>]`)
 }
 
 func fatal(err error) {

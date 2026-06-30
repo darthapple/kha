@@ -17,7 +17,11 @@ Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## AWAITING INPUT Status
 
-If `AWAITING INPUT` does not exist in the list, create it once via `mcp__clickup__clickup_update_list` (orderindex before BACKLOG, color `#e8a838`). Reuse — do not recreate.
+If `AWAITING INPUT` does not exist in the list, create it once:
+```bash
+"$KHA" ensure-status --list <LIST_ID> --name "AWAITING INPUT" --color "#e8a838" --before backlog
+```
+Reuse — do not recreate.
 
 ## No Silent Assumptions
 
@@ -117,17 +121,9 @@ If `tasks[i].kha_blocks["develop:question"]` present:
 
 **Step 3 — Check context:**
 
-Use `tasks[i].kha_blocks["design:context"]` for criteria and file hints. Fall back to `tasks[i].kha_blocks.scoping`. If neither exists → post question comment via `mcp__clickup__clickup_create_comment`:
-```
-[kha:develop:question]
-resume_status: in development
-decision: no design/scoping context found
-context: this task has no [kha:design:context] or [kha:scoping] block — cannot verify acceptance criteria or file hints
-question: Proceed with development without context, or send back to design first?
-options:
-- proceed: implement without design context
-- back to design: move this task back to READY FOR DEVELOPMENT
-@<assignee username>
+Use `tasks[i].kha_blocks["design:context"]` for criteria and file hints. Fall back to `tasks[i].kha_blocks.scoping`. If neither exists → post question comment:
+```bash
+"$KHA" update <task.id> --comment "[kha:develop:question]\nresume_status: in development\ndecision: no design/scoping context found\ncontext: this task has no [kha:design:context] or [kha:scoping] block — cannot verify acceptance criteria or file hints\nquestion: Proceed with development without context, or send back to design first?\noptions:\n- proceed: implement without design context\n- back to design: move this task back to READY FOR DEVELOPMENT\n@<assignee username>"
 ```
 Then:
 ```bash
@@ -149,14 +145,9 @@ git checkout -b task/<task.id>-<kebab-title>
 **Step 6 — TDD loop** — for each acceptance criterion:
 - **Red** → write failing test, run it, confirm it fails for the right reason. Commit: `test(<task.id>): <what it tests>`
 - **Green** → implement minimum code to pass. Follow `file_hints`. Run all tests. Commit: `feat(<task.id>): <what was implemented>` (or `fix(...)` for bugs)
-- If a structural decision arises → post question comment via `mcp__clickup__clickup_create_comment`:
-  ```
-  [kha:develop:question]
-  resume_status: in development
-  decision: structural decision required
-  context: <what was being implemented and what the decision point is>
-  question: <the specific architectural or structural question>
-  @<assignee username>
+- If a structural decision arises → post question comment:
+  ```bash
+  "$KHA" update <task.id> --comment "[kha:develop:question]\nresume_status: in development\ndecision: structural decision required\ncontext: <what was being implemented and what the decision point is>\nquestion: <the specific architectural or structural question>\n@<assignee username>"
   ```
   Then:
   ```bash

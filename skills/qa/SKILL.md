@@ -17,7 +17,11 @@ Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## MANUAL TESTING Status
 
-If `MANUAL TESTING` does not exist in the list, create it once via `mcp__clickup__clickup_update_list` (orderindex after TESTING, color `#f4c430`). Reuse — do not recreate.
+If `MANUAL TESTING` does not exist in the list, create it once:
+```bash
+"$KHA" ensure-status --list <LIST_ID> --name "MANUAL TESTING" --color "#f4c430" --after testing
+```
+Reuse — do not recreate.
 
 ## No Silent Assumptions
 

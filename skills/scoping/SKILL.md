@@ -26,7 +26,11 @@ Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## AWAITING INPUT Status
 
-If `AWAITING INPUT` does not exist in the list, create it once via `mcp__clickup__clickup_update_list` (orderindex before BACKLOG, color `#e8a838`). Reuse — do not recreate.
+If `AWAITING INPUT` does not exist in the list, create it once:
+```bash
+"$KHA" ensure-status --list <LIST_ID> --name "AWAITING INPUT" --color "#e8a838" --before backlog
+```
+Reuse — do not recreate.
 
 ## No Silent Assumptions
 
@@ -133,31 +137,22 @@ If `tasks[i].kha_blocks["scoping:question"]` present:
 
 ### type:epic
 - Propose breakdown: numbered list of `type:feature` children (title + one-line description)
-- Post question comment via `mcp__clickup__clickup_create_comment`:
-  ```
-  [kha:scoping:question]
-  resume_status: scoping
-  decision: epic breakdown approval
-  context: proposed feature breakdown for this epic
-  question: Does this breakdown look correct? Reply "approved" or describe changes.
-  proposal:
-  1. <Feature title> — <one-line description>
-  2. <Feature title> — <one-line description>
-  @<assignee username>
+- Post question comment:
+  ```bash
+  "$KHA" update <task.id> --comment "[kha:scoping:question]\nresume_status: scoping\ndecision: epic breakdown approval\ncontext: proposed feature breakdown for this epic\nquestion: Does this breakdown look correct? Reply \"approved\" or describe changes.\nproposal:\n1. <Feature title> — <one-line description>\n2. <Feature title> — <one-line description>\n@<assignee username>"
   ```
 - Then:
   ```bash
   "$KHA" update <task.id> --status "awaiting input" --stop-timer
   ```
   Stop. (On resume with approval: proceed to create children below.)
-- On approved reply: create each child via `mcp__clickup__clickup_create_task`:
-  `parent_id` = epic ID, `status` = `BACKLOG`, `list_id` from AGENTS.md, `task_type` = `Feature`
-- Add `[kha:scoping:context]` comment to each child via `mcp__clickup__clickup_create_comment`:
+- On approved reply: create each child:
+  ```bash
+  "$KHA" create-task --list <LIST_ID> --name "<Feature title>" --status backlog --parent <task.id> --type feature
   ```
-  [kha:scoping:context]
-  parent epic: <title> (<id>)
-  business goal: <what this epic achieves>
-  context: <relevant background>
+- Add `[kha:scoping:context]` comment to each child:
+  ```bash
+  "$KHA" update <child.id> --comment "[kha:scoping:context]\nparent epic: <title> (<task.id>)\nbusiness goal: <what this epic achieves>\ncontext: <relevant background>"
   ```
 - Finalize:
   ```bash
@@ -180,17 +175,9 @@ If `tasks[i].kha_blocks["scoping:question"]` present:
     --comment "[kha:scoping]\ntype: feature\nrouted: business\naffected roles: <roles>\nacceptance criteria:\n- <criterion>" \
     --stop-timer
   ```
-- If intent is ambiguous → post question comment via `mcp__clickup__clickup_create_comment`:
-  ```
-  [kha:scoping:question]
-  resume_status: scoping
-  decision: intent classification
-  context: <what is ambiguous about business vs technical intent>
-  question: Is this user-facing (business) or purely technical (no behavior change)?
-  options:
-  - business: user-facing, needs acceptance criteria
-  - technical: no behavior change, route directly to design
-  @<assignee username>
+- If intent is ambiguous → post question comment:
+  ```bash
+  "$KHA" update <task.id> --comment "[kha:scoping:question]\nresume_status: scoping\ndecision: intent classification\ncontext: <what is ambiguous about business vs technical intent>\nquestion: Is this user-facing (business) or purely technical (no behavior change)?\noptions:\n- business: user-facing, needs acceptance criteria\n- technical: no behavior change, route directly to design\n@<assignee username>"
   ```
   Then:
   ```bash

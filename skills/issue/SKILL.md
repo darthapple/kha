@@ -23,11 +23,12 @@ Do not assume the title. If missing, ask.
 
 1. Read `AGENTS.md` to get the current list ID
 2. Ask user for title and description if not already provided
-3. Create task with `mcp__clickup__clickup_create_task`:
-   - `list_id`: from AGENTS.md
-   - `name`: task title
-   - `description`: task description (if provided)
-   - `status`: `TRIAGE`
+3. Create task:
+   ```bash
+   KHA="$HOME/.kha/kha"; [ -f .env.local ] && source .env.local
+   "$KHA" create-task --list <LIST_ID> --name "<title>" --status triage [--description "<description>"]
+   ```
+   The command returns `{"id": "...", "url": "..."}`.
 4. Report: task name, ID, and ClickUp URL
 
 ## Output

@@ -1,0 +1,15 @@
+FROM golang:1.25-alpine AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /manager ./cmd/manager && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /kha ./cmd/kha
+
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /manager /usr/local/bin/manager
+COPY --from=builder /kha /root/.kha/kha
+RUN chmod +x /root/.kha/kha /usr/local/bin/manager
+
+CMD ["/usr/local/bin/manager"]

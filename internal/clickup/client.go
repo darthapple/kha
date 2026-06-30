@@ -211,6 +211,85 @@ func (c *Client) UploadAttachment(taskID, filePath string) error {
 	return nil
 }
 
+// GetList fetches a ClickUp list (including its current statuses).
+func (c *Client) GetList(listID string) (*List, error) {
+	data, err := c.do("GET", "/list/"+listID, nil)
+	if err != nil {
+		return nil, err
+	}
+	var l List
+	if err := json.Unmarshal(data, &l); err != nil {
+		return nil, err
+	}
+	return &l, nil
+}
+
+// EnsureListStatus creates a new status on a list if it does not already exist.
+// Returns (true, nil) when created, (false, nil) when it already existed.
+// before/after control insertion position by matching an existing status name (case-insensitive).
+func (c *Client) EnsureListStatus(listID, name, color, before, after string) (bool, error) {
+	list, err := c.GetList(listID)
+	if err != nil {
+		return false, err
+	}
+
+	for _, s := range list.Statuses {
+		if strings.EqualFold(s.Status, name) {
+			return false, nil
+		}
+	}
+
+	newS := StatusPut{Name: name, Color: color, Type: "custom"}
+	puts := make([]StatusPut, 0, len(list.Statuses)+1)
+	inserted := false
+
+	for _, s := range list.Statuses {
+		if !inserted && before != "" && strings.EqualFold(s.Status, before) {
+			puts = append(puts, newS)
+			inserted = true
+		}
+		puts = append(puts, StatusPut{ID: s.ID, Name: s.Status, Color: s.Color, Type: s.Type})
+		if !inserted && after != "" && strings.EqualFold(s.Status, after) {
+			puts = append(puts, newS)
+			inserted = true
+		}
+	}
+	if !inserted {
+		puts = append(puts, newS)
+	}
+
+	if _, err := c.do("PUT", "/list/"+listID, map[string]any{"statuses": puts}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// CreateTask creates a new task in the given list.
+func (c *Client) CreateTask(listID, name, status, taskType, parentID, description string) (*Task, error) {
+	body := map[string]any{
+		"name":   name,
+		"status": status,
+	}
+	if taskType != "" {
+		body["task_type"] = taskType
+	}
+	if parentID != "" {
+		body["parent"] = parentID
+	}
+	if description != "" {
+		body["description"] = description
+	}
+	data, err := c.do("POST", "/list/"+listID+"/task", body)
+	if err != nil {
+		return nil, err
+	}
+	var t Task
+	if err := json.Unmarshal(data, &t); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // ResolveNewlines converts literal \n sequences in flag values to real newlines.
 func ResolveNewlines(s string) string {
 	return strings.ReplaceAll(s, `\n`, "\n")

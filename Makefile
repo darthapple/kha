@@ -1,8 +1,10 @@
 BIN     := kha
 PKG     := ./cmd/kha
+MGR     := manager
+MGRPKG  := ./cmd/manager
 OUTDIR  := dist
 
-.PHONY: all clean install
+.PHONY: all clean install manager
 
 all: $(OUTDIR)/$(BIN)-darwin-arm64 $(OUTDIR)/$(BIN)-darwin-amd64 $(OUTDIR)/$(BIN)-linux-amd64 $(OUTDIR)/$(BIN)-windows-amd64.exe
 
@@ -42,6 +44,9 @@ install:
 	else \
 		echo "Windows: copy dist/$(BIN)-windows-amd64.exe to %APPDATA%\\kha\\kha.exe manually"; \
 	fi
+
+manager:
+	GOOS=linux GOARCH=amd64 go build -o $(OUTDIR)/$(MGR)-linux-amd64 $(MGRPKG)
 
 clean:
 	rm -rf $(OUTDIR)

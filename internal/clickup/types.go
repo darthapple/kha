@@ -73,10 +73,26 @@ type TaskWithOrder struct {
 }
 
 type Status struct {
+	ID         string `json:"id,omitempty"`
 	Status     string `json:"status"`
 	Color      string `json:"color"`
 	OrderIndex int    `json:"orderindex"`
 	Type       string `json:"type"`
+}
+
+// List holds the fields returned by GET /list/{id} that we care about.
+type List struct {
+	ID       string   `json:"id"`
+	Statuses []Status `json:"statuses"`
+}
+
+// StatusPut is the shape sent inside PUT /list/{id} statuses array.
+// Using a separate type avoids sending orderindex, which ClickUp derives from array position.
+type StatusPut struct {
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"status"`
+	Color string `json:"color"`
+	Type  string `json:"type"`
 }
 
 type Member struct {

@@ -22,7 +22,11 @@ Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## AWAITING INPUT Status
 
-If `AWAITING INPUT` does not exist in the list, create it once via `mcp__clickup__clickup_update_list` (orderindex before BACKLOG, color `#e8a838`). Reuse — do not recreate.
+If `AWAITING INPUT` does not exist in the list, create it once:
+```bash
+"$KHA" ensure-status --list <LIST_ID> --name "AWAITING INPUT" --color "#e8a838" --before backlog
+```
+Reuse — do not recreate.
 
 ## No Silent Assumptions
 
@@ -124,17 +128,9 @@ If `tasks[i].kha_blocks["design:question"]` present:
 
 If `tasks[i].kha_blocks.scoping` present → continue to Step 4.
 
-If absent → post question comment via `mcp__clickup__clickup_create_comment`:
-```
-[kha:design:question]
-resume_status: in design
-decision: no scoping context found
-context: this task has no [kha:scoping] block — cannot verify acceptance criteria
-question: Proceed with technical design only, or send back to scoping first?
-options:
-- proceed: design without scoping context
-- back to scoping: move this task back to BACKLOG
-@<assignee username>
+If absent → post question comment:
+```bash
+"$KHA" update <task.id> --comment "[kha:design:question]\nresume_status: in design\ndecision: no scoping context found\ncontext: this task has no [kha:scoping] block — cannot verify acceptance criteria\nquestion: Proceed with technical design only, or send back to scoping first?\noptions:\n- proceed: design without scoping context\n- back to scoping: move this task back to BACKLOG\n@<assignee username>"
 ```
 Then:
 ```bash
@@ -144,16 +140,9 @@ Stop.
 
 **Step 4 — Read the codebase for context only** — read relevant files, trace existing patterns, identify which files and functions are involved. **Do not edit, create, or write any file. Never implement anything.**
 
-**Step 5 — Architecture proposal** — propose the approach in plain text (files to change, patterns to follow, edge cases). Post via `mcp__clickup__clickup_create_comment`:
-```
-[kha:design:question]
-resume_status: in design
-decision: architecture approval
-context: proposed implementation approach
-question: Does this architecture look correct? Reply "approved" or describe changes.
-proposal:
-<files to change, patterns to follow, edge cases — plain text>
-@<assignee username>
+**Step 5 — Architecture proposal** — propose the approach in plain text (files to change, patterns to follow, edge cases). Post:
+```bash
+"$KHA" update <task.id> --comment "[kha:design:question]\nresume_status: in design\ndecision: architecture approval\ncontext: proposed implementation approach\nquestion: Does this architecture look correct? Reply \"approved\" or describe changes.\nproposal:\n<files to change, patterns to follow, edge cases — plain text>\n@<assignee username>"
 ```
 Then:
 ```bash
@@ -164,34 +153,22 @@ Stop. (On resume with approval: proceed to Step 6.)
 **Step 6 — Route by `task_type`:**
 
 ### type:feature
-- Propose a numbered list of independent `type:task` children in plain text. Post via `mcp__clickup__clickup_create_comment`:
-  ```
-  [kha:design:question]
-  resume_status: in design
-  decision: child task list approval
-  context: proposed breakdown of this feature into implementation tasks
-  question: Does this task list look correct? Reply "approved" or describe changes.
-  proposal:
-  1. <Task title> — <one-line scope>
-  2. <Task title> — <one-line scope>
-  @<assignee username>
+- Propose a numbered list of independent `type:task` children in plain text. Post:
+  ```bash
+  "$KHA" update <task.id> --comment "[kha:design:question]\nresume_status: in design\ndecision: child task list approval\ncontext: proposed breakdown of this feature into implementation tasks\nquestion: Does this task list look correct? Reply \"approved\" or describe changes.\nproposal:\n1. <Task title> — <one-line scope>\n2. <Task title> — <one-line scope>\n@<assignee username>"
   ```
   Then:
   ```bash
   "$KHA" update <task.id> --status "awaiting input" --stop-timer
   ```
   Stop. (On resume with approval: create children below.)
-- On approved reply: create each via `mcp__clickup__clickup_create_task`:
-  `parent_id` = current task ID, `status` = `READY FOR DEVELOPMENT`, `list_id` from AGENTS.md, `task_type` = `Task`
-- Add `[kha:design:context]` comment to each child via `mcp__clickup__clickup_create_comment`:
+- On approved reply: create each child:
+  ```bash
+  "$KHA" create-task --list <LIST_ID> --name "<Task title>" --status "ready for development" --parent <task.id> --type task
   ```
-  [kha:design:context]
-  parent feature: <title> (<id>)
-  architecture: <context for this task>
-  scope: <exactly what this task covers>
-  acceptance criteria:
-  - <implementation criterion — starts with verb>
-  file hints: <relevant files>
+- Add `[kha:design:context]` comment to each child:
+  ```bash
+  "$KHA" update <child.id> --comment "[kha:design:context]\nparent feature: <title> (<task.id>)\narchitecture: <context for this task>\nscope: <exactly what this task covers>\nacceptance criteria:\n- <implementation criterion — starts with verb>\nfile hints: <relevant files>"
   ```
 - Finalize:
   ```bash
@@ -203,14 +180,9 @@ Stop. (On resume with approval: proceed to Step 6.)
 
 ### type:task or type:bug
 - Define implementation approach in text only: which files to change, what the fix looks like, edge cases. **Write this plan as a ClickUp comment — never touch the actual files.**
-- Add `[kha:design:context]` comment directly on this task via `mcp__clickup__clickup_create_comment`:
-  ```
-  [kha:design:context]
-  architecture: <approach summary>
-  scope: <what this covers>
-  acceptance criteria:
-  - <implementation criterion — starts with verb>
-  file hints: <relevant files>
+- Add `[kha:design:context]` comment directly on this task:
+  ```bash
+  "$KHA" update <task.id> --comment "[kha:design:context]\narchitecture: <approach summary>\nscope: <what this covers>\nacceptance criteria:\n- <implementation criterion — starts with verb>\nfile hints: <relevant files>"
   ```
 - Finalize:
   ```bash

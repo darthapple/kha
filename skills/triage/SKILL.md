@@ -26,7 +26,11 @@ Do NOT read the ClickUp Pipeline or Taxonomy docs — they are not needed.
 
 ## AWAITING INPUT Status
 
-If `AWAITING INPUT` does not exist in the list, create it once via `mcp__clickup__clickup_update_list` (orderindex before BACKLOG, color `#e8a838`). Reuse — do not recreate.
+If `AWAITING INPUT` does not exist in the list, create it once:
+```bash
+"$KHA" ensure-status --list <LIST_ID> --name "AWAITING INPUT" --color "#e8a838" --before backlog
+```
+Reuse — do not recreate.
 
 ## Steps
 
@@ -122,17 +126,9 @@ If `tasks[i].kha_blocks["triage:question"]` present:
 If classification is clear → proceed to Step 4.
 
 If type is ambiguous OR task is `Bug` with no reproduction steps in description or comments:
-- Post question comment via `mcp__clickup__clickup_create_comment`:
-  ```
-  [kha:triage:question]
-  resume_status: triage
-  decision: <type classification | reproduction steps>
-  context: <what is missing or ambiguous>
-  question: <specific question>
-  options:
-  - <option 1>
-  - <option 2>
-  @<assignee username>
+- Post question comment:
+  ```bash
+  "$KHA" update <task.id> --comment "[kha:triage:question]\nresume_status: triage\ndecision: <type classification | reproduction steps>\ncontext: <what is missing or ambiguous>\nquestion: <specific question>\noptions:\n- <option 1>\n- <option 2>\n@<assignee username>"
   ```
 - Then:
   ```bash
@@ -144,9 +140,11 @@ If type is ambiguous OR task is `Bug` with no reproduction steps in description 
 ```bash
 "$KHA" update <task.id> \
   --status backlog \
+  --task-type <type> \
   --comment "[kha:triage]\ntype: <Type>\nreasoning: <one-line reasoning>" \
   --stop-timer
 ```
+`<type>` is the lowercase value: `bug`, `feature`, `epic`, or `task`.
 
 ## Output
 

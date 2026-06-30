@@ -1,3 +1,6 @@
 dist/
 /kha
 /kha.exe
+CLAUDE.local.md
+.env.agents
+.env.local
